@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-cn" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gohomo</title>
+    <link rel="shortcut icon" href="./favicon.ico" type="image/x-icon"/>
+    <link href="https://registry.npmmirror.com/bootstrap/5/files/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+<div id="app">
+
+    <nav class="navbar bg-body-tertiary sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <img src="./favicon.ico" alt="Logo" width="30" height="24" class="d-inline-block align-text-top">
+                Gohomo
+            </a>
+            <span class="navbar-text">Wrapper for <a href="https://github.com/MetaCubeX/mihomo"
+                                                     target="_blank">Mihomo</a> written in Golang</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="border border-secondary rounded p-3 mt-3">
+            <p class="fw-bold">Mihomo</p>
+            <div class="mb-3">运行状态：<span class="badge text-bg-success"
+                                             v-if="runInfo.core_running">运行中</span><span
+                    class="badge text-bg-secondary" v-else>未运行</span></div>
+
+            <div class="btn-group btn-group-sm d-flex mb-3">
+                <button type="button" class="btn btn-outline-info" @click="coreOperation('restart')">重启</button>
+                <button type="button" class="btn btn-outline-info" @click="coreOperation('start')"
+                        :disabled="runInfo.core_running">启动
+                </button>
+                <button type="button" class="btn btn-outline-danger" @click="coreOperation('stop')"
+                        :disabled="!(runInfo.core_running && !runInfo.proxy_enable)">停止
+                </button>
+            </div>
+            <div v-if="runInfo.core_running">
+                <div class="alert alert-primary" v-if="runInfo.core_ui_addr">
+                    管理面板地址：<a
+                        :href="runInfo.core_ui_addr"
+                        class="link-info link-offset-3 link-underline link-underline-opacity-50 link-underline-opacity-100-hover"
+                        target="_blank">{{ runInfo.core_ui_addr.split('/#/')[0] }}</a>
+                </div>
+                <div class="alert alert-primary" v-if="runInfo.official_ui_addr">
+                    官方面板地址：<a
+                        :href="runInfo.official_ui_addr"
+                        class="link-info link-offset-3 link-underline link-underline-opacity-50 link-underline-opacity-100-hover"
+                        target="_blank">{{ runInfo.official_ui_addr.split('/#/')[0] }}</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="border border-secondary rounded p-3 mt-3">
+            <p class="fw-bold">系统代理</p>
+            <div class="mb-3">启用状态：
+                <div class="btn-group btn-group-sm">
+                    <input type="radio" class="btn-check" name="proxyEnable" id="proxyOn" autocomplete="off"
+                           :value="true" v-model="runInfo.proxy_enable" @change="toggleProxy()">
+                    <label class="btn btn-outline-primary" for="proxyOn">开启</label>
+                    <input type="radio" class="btn-check" name="proxyEnable" id="proxyOff" autocomplete="off"
+                           :value="false" v-model="runInfo.proxy_enable" @change="toggleProxy()">
+                    <label class="btn btn-outline-primary" for="proxyOff">关闭</label>
+                </div>
+            </div>
+            <div v-if="runInfo.proxy_enable">
+                <div class="mb-3">代理地址：<code>{{ runInfo.proxy_server }}</code></div>
+                <div class="alert alert-info">
+                    PowerShell 环境变量设置：<code>$env:HTTP_PROXY="http://{{ runInfo.proxy_server }}";
+                    $env:HTTPS_PROXY="http://{{ runInfo.proxy_server }}"</code>
+                </div>
+                <div class="alert alert-info">
+                    <p>CMD 环境变量设置(两条命令单独执行)</p>
+                    <code class="d-block">set HTTP_PROXY=http://{{ runInfo.proxy_server }}</code>
+                    <code class="d-block">set HTTPS_PROXY=http://{{ runInfo.proxy_server }}</code>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center text-secondary p-3">
+            Author by <a href="https://junlong.plus" target="_blank">Junlong</a>
+        </div>
+    </div>
+
+</div>
+
+<script type="importmap">
+    {
+      "imports": {
+        "vue": "https://registry.npmmirror.com/vue/3/files/dist/vue.esm-browser.prod.js"
+      }
+    }
+</script>
+<script src="https://registry.npmmirror.com/bootstrap/5/files/dist/js/bootstrap.min.js" defer></script>
+<script type="module">
+    import {createApp} from 'vue'
+
+    createApp({
+        data() {
+            return {
+                runInfo: {}
+            }
+        },
+        created() {
+            this.getRunInfo()
+        },
+        methods: {
+            getRunInfo() { // 获取运行信息
+                fetch('/api/info')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.code !== 200) {
+                            alert(data.msg)
+                            return
+                        }
+                        this.runInfo = data.data
+                    })
+                    .catch(error => {
+                        console.error(error)
+                    })
+            },
+            coreOperation(ops) { // 核心进程操作
+                if (confirm('确定要执行此操作吗？')) {
+                    fetch('/api/' + ops, {method: 'POST'})
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.code !== 200) {
+                                alert(data.msg)
+                                return
+                            }
+                            // 延时刷新数据
+                            setTimeout(() => this.getRunInfo(), 500)
+                        })
+                        .catch(error => {
+                            console.error(error)
+                        })
+                }
+            },
+            toggleProxy() { // 切换系统代理
+                fetch('/api/proxy', {
+                    method: 'POST',
+                    body: JSON.stringify({enable: this.runInfo.proxy_enable})
+                }).then(response => response.json())
+                    .then(data => {
+                        if (data.code !== 200) {
+                            alert(data.msg)
+                            return
+                        }
+                        // 延时刷新数据
+                        setTimeout(() => this.getRunInfo(), 500)
+                    })
+                    .catch(error => {
+                        console.error(error)
+                    })
+            }
+        }
+    }).mount('#app')
+</script>
+</body>
+</html>
