@@ -14,11 +14,12 @@
     <nav class="navbar bg-body-tertiary sticky-top">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
-                <img src="./favicon.ico" alt="Logo" width="30" height="24" class="d-inline-block align-text-top">
+                <img src="./favicon.ico" alt="Logo" width="24" height="24" class="d-inline-block align-text-top">
                 Gohomo
             </a>
             <span class="navbar-text">Wrapper for <a href="https://github.com/MetaCubeX/mihomo"
-                                                     target="_blank">Mihomo</a> written in Golang</span>
+                                                     target="_blank">Mihomo</a> written in Golang via <a
+                    href="https://github.com/junlongzzz/gohomo" target="_blank">source code</a></span>
         </div>
     </nav>
 
@@ -43,13 +44,13 @@
                     管理面板地址：<a
                         :href="runInfo.core_ui_addr"
                         class="link-info link-offset-3 link-underline link-underline-opacity-50 link-underline-opacity-100-hover"
-                        target="_blank">{{ runInfo.core_ui_addr.split('/#/')[0] }}</a>
+                        target="_blank">{{ runInfo.core_ui_addr.split('?')[0] }}</a>
                 </div>
                 <div class="alert alert-primary" v-if="runInfo.official_ui_addr">
                     官方面板地址：<a
                         :href="runInfo.official_ui_addr"
                         class="link-info link-offset-3 link-underline link-underline-opacity-50 link-underline-opacity-100-hover"
-                        target="_blank">{{ runInfo.official_ui_addr.split('/#/')[0] }}</a>
+                        target="_blank">{{ runInfo.official_ui_addr.split('?')[0] }}</a>
                 </div>
             </div>
         </div>
@@ -87,28 +88,15 @@
 
 </div>
 
-<script type="importmap">
-    {
-      "imports": {
-        "vue": "https://registry.npmmirror.com/vue/3/files/dist/vue.esm-browser.prod.js"
-      }
-    }
-</script>
-<script src="https://registry.npmmirror.com/bootstrap/5/files/dist/js/bootstrap.min.js" defer></script>
+<script src="https://registry.npmmirror.com/bootstrap/5/files/dist/js/bootstrap.min.js" async></script>
 <script type="module">
-    import {createApp} from 'vue'
+    import {createApp, ref, onMounted} from 'https://registry.npmmirror.com/vue/3/files/dist/vue.esm-browser.prod.js'
 
     createApp({
-        data() {
-            return {
-                runInfo: {}
-            }
-        },
-        created() {
-            this.getRunInfo()
-        },
-        methods: {
-            getRunInfo() { // 获取运行信息
+        setup() {
+            const runInfo = ref({})
+
+            function getRunInfo() { // 获取运行信息
                 fetch('/api/info')
                     .then(response => response.json())
                     .then(data => {
@@ -116,13 +104,14 @@
                             alert(data.msg)
                             return
                         }
-                        this.runInfo = data.data
+                        runInfo.value = data.data
                     })
                     .catch(error => {
                         console.error(error)
                     })
-            },
-            coreOperation(ops) { // 核心进程操作
+            }
+
+            function coreOperation(ops) { // 核心进程操作
                 if (confirm('确定要执行此操作吗？')) {
                     fetch('/api/core', {
                         method: ops === 'start' ? 'POST' : (ops === 'stop' ? 'DELETE' : 'PUT')
@@ -133,28 +122,44 @@
                                 return
                             }
                             // 延时刷新数据
-                            setTimeout(() => this.getRunInfo(), 500)
+                            setTimeout(() => getRunInfo(), 500)
                         })
                         .catch(error => {
                             console.error(error)
                         })
                 }
-            },
-            toggleProxy() { // 切换系统代理
+            }
+
+            function toggleProxy() { // 切换系统代理
+                if (runInfo.value.proxy_enable && !runInfo.value.core_running) {
+                    runInfo.value.proxy_enable = false
+                    alert('Mihomo 未运行，无法开启代理')
+                    return
+                }
                 fetch('/api/proxy', {
-                    method: this.runInfo.proxy_enable ? 'POST' : 'DELETE'
+                    method: runInfo.value.proxy_enable ? 'POST' : 'DELETE'
                 }).then(response => response.json())
                     .then(data => {
                         if (data.code !== 200) {
+                            runInfo.value.proxy_enable = !runInfo.value.proxy_enable
                             alert(data.msg)
                             return
                         }
                         // 延时刷新数据
-                        setTimeout(() => this.getRunInfo(), 500)
+                        setTimeout(() => getRunInfo(), 500)
                     })
                     .catch(error => {
                         console.error(error)
                     })
+            }
+
+            onMounted(() => {
+                getRunInfo()
+            })
+            return {
+                runInfo,
+                coreOperation,
+                toggleProxy
             }
         }
     }).mount('#app')
