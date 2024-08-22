@@ -124,8 +124,9 @@
             },
             coreOperation(ops) { // 核心进程操作
                 if (confirm('确定要执行此操作吗？')) {
-                    fetch('/api/' + ops, {method: 'POST'})
-                        .then(response => response.json())
+                    fetch('/api/core', {
+                        method: ops === 'start' ? 'POST' : (ops === 'stop' ? 'DELETE' : 'PUT')
+                    }).then(response => response.json())
                         .then(data => {
                             if (data.code !== 200) {
                                 alert(data.msg)
@@ -141,8 +142,7 @@
             },
             toggleProxy() { // 切换系统代理
                 fetch('/api/proxy', {
-                    method: 'POST',
-                    body: JSON.stringify({enable: this.runInfo.proxy_enable})
+                    method: this.runInfo.proxy_enable ? 'POST' : 'DELETE'
                 }).then(response => response.json())
                     .then(data => {
                         if (data.code !== 200) {

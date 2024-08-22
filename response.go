@@ -20,7 +20,16 @@ func response(w http.ResponseWriter, code int, msg string, data any) {
 		Msg:  msg,
 		Data: data,
 	}); err != nil {
-		log.Fatalln("json response error:", err)
+		log.Println("json response error:", err)
+	}
+}
+
+// responseIf 根据是否成功响应不同内容
+func responseIf(w http.ResponseWriter, isOk bool, msg string, data any) {
+	if isOk {
+		success(w, data)
+	} else {
+		fail(w, http.StatusInternalServerError, msg)
 	}
 }
 

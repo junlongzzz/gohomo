@@ -2,7 +2,6 @@ package main
 
 import (
 	"embed"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -78,34 +77,25 @@ func server(host string, port int) {
 				"proxy_server":     getProxyServer(),
 			})
 		})
-		r.Post("/start", func(w http.ResponseWriter, r *http.Request) {
-			startCore()
-			success(w, nil)
+		// 核心操作
+		r.Post("/core", func(w http.ResponseWriter, r *http.Request) {
+			responseIf(w, startCore(), "failed to start core", nil)
 		})
-		r.Post("/stop", func(w http.ResponseWriter, r *http.Request) {
-			stopCore()
-			success(w, nil)
+		r.Delete("/core", func(w http.ResponseWriter, r *http.Request) {
+			responseIf(w, stopCore(), "failed to stop core", nil)
 		})
-		r.Post("/restart", func(w http.ResponseWriter, r *http.Request) {
-			restartCore()
-			success(w, nil)
+		r.Put("/core", func(w http.ResponseWriter, r *http.Request) {
+			responseIf(w, restartCore(), "failed to restart core", nil)
 		})
+		// 系统代理操作
 		r.Post("/proxy", func(w http.ResponseWriter, r *http.Request) {
-			// 解析请求体
-			var params struct {
-				Enable bool `json:"enable"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-				fail(w, http.StatusBadRequest, "invalid request body")
-				return
-			}
-			defer r.Body.Close()
-			if params.Enable {
-				setProxy(true, fmt.Sprintf("127.0.0.1:%d", coreConfig.HttpProxyPort), defaultBypass)
-			} else {
-				unsetProxy()
-			}
-			success(w, nil)
+			// 设置代理
+			responseIf(w, setProxy(true, fmt.Sprintf("127.0.0.1:%d", coreConfig.HttpProxyPort), defaultBypass),
+				"failed to set proxy", nil)
+		})
+		r.Delete("/proxy", func(w http.ResponseWriter, r *http.Request) {
+			// 删除代理
+			responseIf(w, unsetProxy(), "failed to unset proxy", nil)
 		})
 	})
 
