@@ -20,8 +20,9 @@ import (
 
 // 捕获中断信号
 var (
-	workDir string // 工作目录
+	build string // 编译时的git提交哈希
 
+	workDir       string // 工作目录
 	signalChannel chan os.Signal
 	servHost      = "127.0.0.1"
 	servPort      = 18081
@@ -118,7 +119,7 @@ func fatal(v ...any) {
 }
 
 func main() {
-	log.Println("Gohomo - Wrapper for Mihomo written in Golang.")
+	log.Println("Gohomo - Wrapper for Mihomo written in Golang.", fmt.Sprintf("(build %s)", build))
 
 	// 捕获中断信号，进行一些清理操作
 	signalChannel = make(chan os.Signal, 1)
