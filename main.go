@@ -5,27 +5,27 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 
+	"github.com/energye/systray"
+	"github.com/energye/systray/icon"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/sys/windows"
+	"gopkg.in/yaml.v3"
 )
 
 // 捕获中断信号
 var (
 	build string // 编译时的git提交哈希
 
-	workDir       string // 工作目录
-	signalChannel chan os.Signal
-	servHost      = "127.0.0.1"
-	servPort      = 18081
+	workDir  string // 工作目录
+	servHost = "127.0.0.1"
+	servPort = 18081
 
 	// 嵌入静态文件
 	//go:embed static/*
@@ -91,8 +91,7 @@ func server(host string, port int) {
 		// 系统代理操作
 		r.Post("/proxy", func(w http.ResponseWriter, r *http.Request) {
 			// 设置代理
-			responseIf(w, setProxy(true, fmt.Sprintf("127.0.0.1:%d", coreConfig.HttpProxyPort), defaultBypass),
-				"failed to set proxy", nil)
+			responseIf(w, setCoreProxy(), "failed to set proxy", nil)
 		})
 		r.Delete("/proxy", func(w http.ResponseWriter, r *http.Request) {
 			// 删除代理
@@ -110,29 +109,22 @@ func server(host string, port int) {
 
 // 发生错误退出程序时的提示，避免无法看到错误消息
 func fatal(v ...any) {
-	log.Println(v...)
-	log.Println("Press Ctrl+C to exit")
-	// 阻塞，等待信号
-	<-signalChannel
+	MessageBox("Gohomo", fmt.Sprint(v...), windows.MB_OK)
 	// 退出程序
 	os.Exit(0)
 }
 
 func main() {
-	log.Println("Gohomo - Wrapper for Mihomo written in Golang.", fmt.Sprintf("(build %s)", build))
+	//log.Println("Gohomo - Wrapper for Mihomo written in Golang.", fmt.Sprintf("(build %s)", build))
 
-	// 捕获中断信号，进行一些清理操作
-	signalChannel = make(chan os.Signal, 1)
-	signal.Notify(signalChannel, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
-
-	// 尝试绑定服务端口，来判断是否有其他实例在运行或者端口被占用
-	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", servHost, servPort))
-	if err != nil {
-		fatal(fmt.Sprintf("Gohomo is already running or port %d is in use", servPort))
-	} else {
-		// 关闭端口，避免后续被占用无法监听
-		_ = listener.Close()
-	}
+	//// 尝试绑定服务端口，来判断是否有其他实例在运行或者端口被占用
+	//listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", servHost, servPort))
+	//if err != nil {
+	//	fatal(fmt.Sprintf("Gohomo is already running or port %d is in use", servPort))
+	//} else {
+	//	// 关闭端口，避免后续被占用无法监听
+	//	_ = listener.Close()
+	//}
 
 	// 获取当前程序的执行所在目录
 	executable, err := os.Executable()
@@ -163,23 +155,71 @@ func main() {
 		return nil
 	})
 	if coreName == "" {
-		fatal("No core found")
+		fatal("No core found, please put it in ", coreDir)
 	}
 	// 加载核心配置
 	loadCoreConfig()
 
-	// 启动HTTP服务器
-	server(servHost, servPort)
+	//// 启动HTTP服务器
+	//server(servHost, servPort)
 
 	if startCore() {
 		// 设置系统代理
-		setProxy(true, fmt.Sprintf("127.0.0.1:%d", coreConfig.HttpProxyPort), defaultBypass)
+		setCoreProxy()
 	}
 
-	// 监听信号通道
-	sig := <-signalChannel
+	// 系统托盘
+	systray.Run(onReady, onExit)
+}
+
+func onReady() {
+	systray.SetIcon(icon.Data)
+	systray.SetTitle("Gohomo")
+	systray.SetTooltip("Gohomo - Wrapper for Mihomo written in Golang.")
+
+	systray.AddMenuItem(fmt.Sprintf("build %s", build), "").Disable()
+
+	systray.AddMenuItem("Run Info", "Show run information").Click(func() {
+		out, _ := yaml.Marshal(map[string]any{
+			"core_running":     isCoreRunning(),
+			"core_port":        coreConfig.HttpProxyPort,
+			"core_ui_addr":     coreConfig.ExternalUiAddr,
+			"official_ui_addr": coreConfig.OfficialUiAddr,
+			"proxy_enable":     getProxyEnable(),
+			"proxy_server":     getProxyServer(),
+		})
+		MessageBox("Gohomo Run Information", string(out), windows.MB_OK)
+	})
+
+	sysProxyItem := systray.AddMenuItemCheckbox("System Proxy", "Set/Unset System Proxy", getProxyEnable())
+	sysProxyItem.Click(func() {
+		if sysProxyItem.Checked() {
+			if unsetProxy() {
+				sysProxyItem.Uncheck()
+			}
+		} else {
+			if setCoreProxy() {
+				sysProxyItem.Check()
+			}
+		}
+	})
+	restartCoreItem := systray.AddMenuItem("Restart Core", "")
+	restartCoreItem.Click(func() {
+		restartCoreItem.Disable()
+		restartCore()
+		restartCoreItem.Enable()
+	})
+	// 分割线
+	systray.AddSeparator()
+	exitItem := systray.AddMenuItem("Exit", "Exit Gohomo")
+	exitItem.Click(func() {
+		systray.Quit()
+	})
+}
+
+func onExit() {
 	// 退出程序后的处理操作
 	unsetProxy()
-	log.Println("Gohomo exited", fmt.Sprintf("(signal: %s)", sig))
+	stopCore()
 	os.Exit(0)
 }

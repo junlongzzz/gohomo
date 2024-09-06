@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -14,8 +12,6 @@ import (
 )
 
 var (
-	cmd *exec.Cmd
-
 	coreDir    string
 	coreName   string
 	coreConfig CoreConfig
@@ -41,7 +37,7 @@ type CoreConfig struct {
 func loadCoreConfig() {
 	configPath := filepath.Join(coreDir, "config.yaml")
 	if !isFileExist(configPath) {
-		fatal("config.yaml not found, please put it in", configPath)
+		fatal("config.yaml not found, please put it in ", configPath)
 	}
 
 	bytes, err := os.ReadFile(configPath)
@@ -94,40 +90,40 @@ func startCore() bool {
 	}
 
 	// 启动core程序
-	cmd = exec.Command(filepath.Join(coreDir, coreName), "-d", coreDir)
-	// 获取标准输出管道
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Println("Error creating StdoutPipe:", err)
-		return false
-	}
-	// 获取标准错误管道
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		log.Println("Error creating StderrPipe:", err)
-		return false
-	}
+	cmd := exec.Command(filepath.Join(coreDir, coreName), "-d", coreDir)
+	//// 获取标准输出管道
+	//stdout, err := cmd.StdoutPipe()
+	//if err != nil {
+	//	log.Println("Error creating StdoutPipe:", err)
+	//	return false
+	//}
+	//// 获取标准错误管道
+	//stderr, err := cmd.StderrPipe()
+	//if err != nil {
+	//	log.Println("Error creating StderrPipe:", err)
+	//	return false
+	//}
 	if err := cmd.Start(); err != nil {
 		log.Println("Failed to start core:", err)
 		return false
 	}
 
-	go func() {
-		// 创建一个 io.MultiReader 来合并 stdout 和 stderr
-		reader := io.MultiReader(stdout, stderr)
-		// 逐行读取输出并打印到控制台
-		scanner := bufio.NewScanner(reader)
-		for scanner.Scan() {
-			fmt.Println(scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			log.Println("Error reading core output:", err)
-		}
-		// 等待命令执行完成
-		//if err := cmd.Wait(); err != nil {
-		//	log.Println("Core exited with error:", err)
-		//}
-	}()
+	//go func() {
+	//	// 创建一个 io.MultiReader 来合并 stdout 和 stderr
+	//	reader := io.MultiReader(stdout, stderr)
+	//	// 逐行读取输出并打印到控制台
+	//	scanner := bufio.NewScanner(reader)
+	//	for scanner.Scan() {
+	//		fmt.Println(scanner.Text())
+	//	}
+	//	if err := scanner.Err(); err != nil {
+	//		log.Println("Error reading core output:", err)
+	//	}
+	//	// 等待命令执行完成
+	//	//if err := cmd.Wait(); err != nil {
+	//	//	log.Println("Core exited with error:", err)
+	//	//}
+	//}()
 
 	log.Println("Core started")
 	return true
@@ -158,4 +154,9 @@ func restartCore() bool {
 // 检查core程序是否正在运行
 func isCoreRunning() bool {
 	return isProcessRunning(coreName)
+}
+
+// 设置系统代理为core配置的代理
+func setCoreProxy() bool {
+	return setProxy(true, fmt.Sprintf("127.0.0.1:%d", coreConfig.HttpProxyPort), defaultBypass)
 }

@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"golang.org/x/sys/windows"
 )
 
 // 使用 tasklist 命令检查进程是否正在运行
@@ -37,4 +39,13 @@ func isFileExist(path string) bool {
 		return false
 	}
 	return true
+}
+
+// MessageBox 返回值对应不同的按钮，flags表示展示MB_xx哪些操作按钮
+// 展示的时候会阻塞当前线程，直到用户点击按钮
+func MessageBox(title, content string, flags uint32) int {
+	captionPtr, _ := windows.UTF16PtrFromString(title)
+	textPtr, _ := windows.UTF16PtrFromString(content)
+	ret, _ := windows.MessageBox(0, textPtr, captionPtr, flags)
+	return int(ret)
 }

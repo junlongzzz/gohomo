@@ -7,4 +7,4 @@ tasks:
       GIT_COMMIT:
         sh: git rev-parse --short HEAD
     cmds:
-      - go build -ldflags="-s -w -X main.build={{.GIT_COMMIT}}" -trimpath .
+      - go build -ldflags="-s -w -X main.build={{.GIT_COMMIT}} -H=windowsgui" -trimpath .
