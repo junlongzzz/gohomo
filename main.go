@@ -7,11 +7,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/energye/systray"
 	"golang.org/x/sys/windows"
 )
+
+// pid文件
+const pidFile = "gohomo.pid"
 
 var (
 	build string // 编译时的git提交哈希
@@ -23,6 +27,8 @@ var (
 )
 
 func main() {
+	checkSingleInstance()
+
 	// 获取当前程序的执行所在目录
 	executable, err := os.Executable()
 	if err != nil {
@@ -73,6 +79,29 @@ func fatal(v ...any) {
 	os.Exit(0)
 }
 
+// 检查是否为单实例
+func checkSingleInstance() {
+	pidFilePath := filepath.Join(os.TempDir(), pidFile)
+	if isFileExist(pidFilePath) {
+		bytes, err := os.ReadFile(pidFilePath)
+		if err == nil {
+			// 判断pid对应进程是否还在运行
+			pid, err := strconv.Atoi(string(bytes))
+			if err == nil && isProcessRunningByPid(pid) {
+				fatal("Another instance of Gohomo is running.")
+			}
+		}
+	}
+
+	// 当前进程的pid
+	pid := os.Getpid()
+	// 保存pid文件
+	err := os.WriteFile(pidFilePath, []byte(strconv.Itoa(pid)), 0644)
+	if err != nil {
+		fatal("Failed to write pid file:", err)
+	}
+}
+
 func onReady() {
 	bytes, err := staticFiles.ReadFile("static/icon.ico")
 	if err == nil {
@@ -82,6 +111,9 @@ func onReady() {
 	systray.SetTooltip("Gohomo - Wrapper for Mihomo written in Golang.")
 
 	systray.AddMenuItem("Gohomo", "Gohomo").Disable()
+
+	// 分割线
+	systray.AddSeparator()
 
 	sysProxyItem := systray.AddMenuItemCheckbox("System Proxy", "Set/Unset System Proxy", getProxyEnable())
 	sysProxyItem.Click(func() {

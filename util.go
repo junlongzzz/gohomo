@@ -25,6 +25,20 @@ func isProcessRunning(processName string) bool {
 	return strings.Contains(string(output), processName)
 }
 
+// 根据 pid 检查进程是否正在运行
+func isProcessRunningByPid(pid int) bool {
+	if pid == 0 {
+		return false
+	}
+	cmd := ExecCommand("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Println("Error check running:", string(output), err)
+		return false
+	}
+	return strings.Contains(string(output), fmt.Sprintf("%d", pid))
+}
+
 // 使用 taskkill 命令杀进程，支持 * 号模糊匹配
 func killProcess(processName string) error {
 	if processName == "" {
