@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"os/exec"
 	"regexp"
 )
 
@@ -15,7 +14,7 @@ var patternBypass = regexp.MustCompile(`ProxyOverride\s+REG_SZ\s+(?P<value>\S+)`
 
 // 获取是否开启了代理
 func getProxyEnable() bool {
-	cmd := exec.Command("reg", "query", regFullKey, "/v", "ProxyEnable", "/t", "REG_DWORD")
+	cmd := ExecCommand("reg", "query", regFullKey, "/v", "ProxyEnable", "/t", "REG_DWORD")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Println("Error executing command:", err)
@@ -32,7 +31,7 @@ func getProxyEnable() bool {
 
 // 获取代理服务器地址
 func getProxyServer() string {
-	cmd := exec.Command("reg", "query", regFullKey, "/v", "ProxyServer", "/t", "REG_SZ")
+	cmd := ExecCommand("reg", "query", regFullKey, "/v", "ProxyServer", "/t", "REG_SZ")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Println("Error executing command:", err)
@@ -49,7 +48,7 @@ func getProxyServer() string {
 
 // 获取代理白名单
 func getProxyBypass() string {
-	cmd := exec.Command("reg", "query", regFullKey, "/v", "ProxyOverride", "/t", "REG_SZ")
+	cmd := ExecCommand("reg", "query", regFullKey, "/v", "ProxyOverride", "/t", "REG_SZ")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Println("Error executing command:", err)
@@ -72,7 +71,7 @@ func setProxy(enable bool, server string, bypass string) bool {
 	}
 
 	// Set ProxyEnable
-	cmdEnable := exec.Command("reg", "add", regFullKey, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", enableValue, "/f")
+	cmdEnable := ExecCommand("reg", "add", regFullKey, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", enableValue, "/f")
 	if output, err := cmdEnable.CombinedOutput(); err != nil {
 		log.Println("Error setting ProxyEnable:", string(output), err)
 		return false
@@ -80,7 +79,7 @@ func setProxy(enable bool, server string, bypass string) bool {
 
 	// Set ProxyServer
 	if server != "" {
-		cmdServer := exec.Command("reg", "add", regFullKey, "/v", "ProxyServer", "/t", "REG_SZ", "/d", server, "/f")
+		cmdServer := ExecCommand("reg", "add", regFullKey, "/v", "ProxyServer", "/t", "REG_SZ", "/d", server, "/f")
 		if output, err := cmdServer.CombinedOutput(); err != nil {
 			log.Println("Error setting ProxyServer:", string(output), err)
 			return false
@@ -89,7 +88,7 @@ func setProxy(enable bool, server string, bypass string) bool {
 
 	// Set ProxyOverride (Bypass list)
 	if bypass != "" {
-		cmdBypass := exec.Command("reg", "add", regFullKey, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", bypass, "/f")
+		cmdBypass := ExecCommand("reg", "add", regFullKey, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", bypass, "/f")
 		if output, err := cmdBypass.CombinedOutput(); err != nil {
 			log.Println("Error setting ProxyOverride:", string(output), err)
 			return false

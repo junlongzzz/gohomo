@@ -4,7 +4,6 @@ go 1.23
 
 require (
 	github.com/energye/systray v1.0.2
-	github.com/go-chi/chi/v5 v5.1.0
 	golang.org/x/sys v0.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )
