@@ -110,6 +110,13 @@ func onReady() {
 	systray.SetTitle("Gohomo")
 	systray.SetTooltip("Gohomo - Wrapper for Mihomo written in Golang.")
 
+	// 左键点击托盘时显示菜单
+	systray.SetOnClick(func(menu systray.IMenu) {
+		if menu != nil {
+			_ = menu.ShowMenu()
+		}
+	})
+
 	systray.AddMenuItem("Gohomo", "Gohomo").Disable()
 
 	// 分割线
@@ -148,14 +155,14 @@ func onReady() {
 	// 分割线
 	systray.AddSeparator()
 
+	systray.AddMenuItem("Source Code", "Github page").Click(func() {
+		_ = openBrowser("https://github.com/junlongzzz/gohomo")
+	})
+
 	systray.AddMenuItem("About", "Show about").Click(func() {
 		about := fmt.Sprintf("App Name: %s\nDescription: %s\nBuild Hash: %s\n---\nWork Directory: %s\nCore Directory: %s\nCore Name: %s",
 			"Gohomo", "Wrapper for Mihomo written in Golang.", build, workDir, coreDir, coreName)
 		MessageBox("Gohomo", about, windows.MB_OK)
-	})
-
-	systray.AddMenuItem("Source Code", "Github page").Click(func() {
-		_ = openBrowser("https://github.com/junlongzzz/gohomo")
 	})
 
 	exitItem := systray.AddMenuItem("Exit", "Exit Gohomo")
