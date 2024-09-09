@@ -11,6 +11,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+var (
+	user32                     = windows.NewLazySystemDLL("user32.dll")
+	procSetProcessDPIAware     = user32.NewProc("SetProcessDPIAware")
+	shCore                     = windows.NewLazySystemDLL("SHCore.dll")
+	procSetProcessDpiAwareness = shCore.NewProc("SetProcessDpiAwareness")
+)
+
 // 使用 tasklist 命令检查进程是否正在运行
 func isProcessRunning(processName string) bool {
 	if processName == "" {
@@ -93,6 +100,24 @@ func MessageBox(title, content string, flags uint32) int {
 	textPtr, _ := windows.UTF16PtrFromString(content)
 	ret, _ := windows.MessageBox(0, textPtr, captionPtr, flags)
 	return int(ret)
+}
+
+// SetDPIAware 启用高 DPI 感知
+func SetDPIAware() {
+	if procSetProcessDpiAwareness.Find() == nil {
+		// 在 Windows 10 及以上系统启用高 DPI 感知
+		// 2 表示 DPI_AWARENESS_PER_MONITOR_AWARE，适应不同显示器的 DPI
+		ret, _, err := procSetProcessDpiAwareness.Call(uintptr(2))
+		if ret != 0 {
+			log.Println("SetProcessDpiAwareness call failed:", err)
+		}
+	} else {
+		// 在 Windows 8.1 及以下系统启用高 DPI 感知
+		ret, _, err := procSetProcessDPIAware.Call()
+		if ret == 0 {
+			log.Println("SetProcessDPIAware call failed:", err)
+		}
+	}
 }
 
 // ExecCommand 创建命令并设置 CREATE_NO_WINDOW

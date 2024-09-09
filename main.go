@@ -27,6 +27,9 @@ var (
 )
 
 func main() {
+	// 设置高DPI感知，避免界面模糊
+	SetDPIAware()
+
 	checkSingleInstance()
 
 	// 获取当前程序的执行所在目录
