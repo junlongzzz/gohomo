@@ -14,8 +14,12 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// pid文件
-const pidFile = "gohomo.pid"
+const (
+	// 程序名称
+	appName = "Gohomo"
+	// pid文件名称
+	pidFile = "gohomo.pid"
+)
 
 var (
 	build string // 编译时的git提交哈希
@@ -77,7 +81,7 @@ func main() {
 
 // 发生错误退出程序时的提示，避免无法看到错误消息
 func fatal(v ...any) {
-	MessageBox("Gohomo", fmt.Sprintln(v...), windows.MB_OK)
+	MessageBox(appName, fmt.Sprintln(v...), windows.MB_OK)
 	// 退出程序
 	os.Exit(0)
 }
@@ -110,8 +114,8 @@ func onReady() {
 	if err == nil {
 		systray.SetIcon(bytes)
 	}
-	systray.SetTitle("Gohomo")
-	systray.SetTooltip("Gohomo - Wrapper for Mihomo written in Golang.")
+	systray.SetTitle(appName)
+	systray.SetTooltip(appName)
 
 	// 左键点击托盘时显示菜单
 	systray.SetOnClick(func(menu systray.IMenu) {
@@ -120,12 +124,19 @@ func onReady() {
 		}
 	})
 
-	systray.AddMenuItem("Gohomo", "Gohomo").Disable()
+	systray.AddMenuItem(appName, appName).Click(func() {
+		// 点击打开主页
+		_ = openBrowser("https://github.com/junlongzzz/gohomo")
+	})
+	systray.AddMenuItem("Mihomo", "Mihomo").Click(func() {
+		// 点击打开主页
+		_ = openBrowser("https://github.com/MetaCubeX/mihomo")
+	})
 
 	// 分割线
 	systray.AddSeparator()
 
-	sysProxyItem := systray.AddMenuItemCheckbox("System Proxy", "Set/Unset System Proxy", getProxyEnable())
+	sysProxyItem := systray.AddMenuItemCheckbox("System proxy", "Set/Unset system proxy", getProxyEnable())
 	sysProxyItem.Click(func() {
 		if sysProxyItem.Checked() {
 			if unsetProxy() {
@@ -138,19 +149,19 @@ func onReady() {
 		}
 	})
 
-	restartCoreItem := systray.AddMenuItem("Restart Core", "Restart Core")
+	restartCoreItem := systray.AddMenuItem("Restart core", "Restart core")
 	restartCoreItem.Click(func() {
 		if !restartCore() {
-			MessageBox("Gohomo", "Failed to restart core", windows.MB_OK)
+			MessageBox(appName, "Failed to restart core", windows.MB_OK)
 		}
 	})
 
 	if coreConfig.ExternalUiAddr != "" {
-		dashboardItem := systray.AddMenuItem("Core Dashboard", "Core Dashboard")
-		dashboardItem.AddSubMenuItem("External UI", "Local config").Click(func() {
+		dashboardItem := systray.AddMenuItem("Core dashboard", "Core dashboard")
+		dashboardItem.AddSubMenuItem("External UI", "External UI").Click(func() {
 			_ = openBrowser(coreConfig.ExternalUiAddr)
 		})
-		dashboardItem.AddSubMenuItem("Official UI", "metacubexd").Click(func() {
+		dashboardItem.AddSubMenuItem("Official UI", "Official UI").Click(func() {
 			_ = openBrowser(coreConfig.OfficialUiAddr)
 		})
 	}
@@ -158,17 +169,21 @@ func onReady() {
 	// 分割线
 	systray.AddSeparator()
 
-	systray.AddMenuItem("Source Code", "Github page").Click(func() {
-		_ = openBrowser("https://github.com/junlongzzz/gohomo")
+	// 打开本地工作目录
+	systray.AddMenuItem("Open work directory", "Open work directory").Click(func() {
+		_ = openDirectory(workDir)
 	})
 
-	systray.AddMenuItem("About", "Show about").Click(func() {
-		about := fmt.Sprintf("App Name: %s\nDescription: %s\nBuild Hash: %s\n---\nWork Directory: %s\nCore Directory: %s\nCore Name: %s",
-			"Gohomo", "Wrapper for Mihomo written in Golang.", build, workDir, coreDir, coreName)
-		MessageBox("Gohomo", about, windows.MB_OK)
+	// 分割线
+	systray.AddSeparator()
+
+	systray.AddMenuItem("About", "About").Click(func() {
+		about := fmt.Sprintf("Name: %s\nDescription: %s\nBuild hash: %s\n---\nWork directory: %s\nCore directory: %s\nCore name: %s",
+			appName, "Wrapper for Mihomo written in Golang.", build, workDir, coreDir, coreName)
+		MessageBox(appName, about, windows.MB_OK)
 	})
 
-	exitItem := systray.AddMenuItem("Exit", "Exit Gohomo")
+	exitItem := systray.AddMenuItem("Exit", "Exit")
 	exitItem.Click(func() { systray.Quit() })
 }
 

@@ -93,6 +93,25 @@ func openBrowser(url string) error {
 	return cmd.Start()
 }
 
+// 打开目录浏览
+func openDirectory(dir string) error {
+	var cmd *exec.Cmd
+
+	// 判断当前系统类型
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", dir) // Windows
+	case "darwin":
+		cmd = exec.Command("open", dir) // macOS
+	case "linux":
+		cmd = exec.Command("xdg-open", dir) // Linux (需要安装 xdg-utils)
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
+
+	return cmd.Start()
+}
+
 // MessageBox 返回值对应不同的按钮，flags表示展示MB_xx哪些操作按钮
 // 展示的时候会阻塞当前线程，直到用户点击按钮
 func MessageBox(title, content string, flags uint32) int {
