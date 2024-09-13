@@ -14,6 +14,7 @@ import (
 var (
 	coreDir    string
 	coreName   string
+	corePath   string
 	coreConfig CoreConfig
 
 	mutex sync.Mutex // 互斥锁
@@ -90,7 +91,7 @@ func startCore() bool {
 	}
 
 	// 启动core程序
-	cmd := ExecCommand(filepath.Join(coreDir, coreName), "-d", coreDir)
+	cmd := ExecCommand(corePath, "-d", coreDir)
 	// 丢弃程序输出
 	cmd.Stdout = nil
 	cmd.Stderr = nil

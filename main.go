@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -15,10 +14,10 @@ import (
 )
 
 const (
-	// 程序名称
-	appName = "Gohomo"
-	// pid文件名称
-	pidFile = "gohomo.pid"
+	// AppName 程序名称
+	AppName = "Gohomo"
+	// PidFile pid文件名称
+	PidFile = "gohomo.pid"
 )
 
 var (
@@ -45,34 +44,44 @@ func main() {
 	coreDir = filepath.Join(workDir, "core")
 	log.Println("Working directory:", workDir)
 	log.Println("Core directory:", coreDir)
-	// 查找core目录下知否存在mihomo开头的可执行文件
-	_ = filepath.Walk(coreDir, func(path string, info os.FileInfo, err error) error {
+
+	// 查找工作目录下是否存在文件名以 mihomo 开头，以 .exe 结尾的文件
+	_ = filepath.Walk(workDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasPrefix(strings.ToLower(info.Name()), "mihomo") {
-			// 判断是否是可执行的文件
-			if (runtime.GOOS == "windows" && strings.HasSuffix(strings.ToLower(info.Name()), ".exe")) ||
-				info.Mode()&0111 != 0 { // linux&unix下的判断
-				// 可执行
-				coreName = info.Name()
-				log.Println("Found core:", coreName)
-				return fmt.Errorf("found core") // 找到文件后返回自定义错误退出遍历
-			} else {
-				log.Println("Found core:", info.Name(), "but it is not executable")
-			}
+		if strings.HasPrefix(strings.ToLower(info.Name()), "mihomo") &&
+			strings.HasSuffix(strings.ToLower(info.Name()), ".exe") &&
+			!info.IsDir() {
+			corePath = path
+			log.Println("Found core:", corePath)
+			return fmt.Errorf("found core") // 找到文件后返回自定义错误退出遍历
 		}
 		return nil
 	})
-	if coreName == "" {
-		fatal("No core found, please put it in", coreDir)
+	if corePath == "" {
+		fatal("No core found, please put it in", workDir)
+	} else {
+		// 获取core文件名
+		coreName = filepath.Base(corePath)
 	}
+
+	if !isFileExist(coreDir) {
+		// core目录不存在则自动创建
+		err := os.Mkdir(coreDir, 0755)
+		if err != nil {
+			fatal("Failed to create core directory:", err)
+		}
+	}
+
 	// 加载核心配置
 	loadCoreConfig()
 
 	if startCore() {
 		// 设置系统代理
 		setCoreProxy()
+	} else {
+		fatal("Failed to start core", corePath)
 	}
 
 	// 系统托盘
@@ -81,14 +90,14 @@ func main() {
 
 // 发生错误退出程序时的提示，避免无法看到错误消息
 func fatal(v ...any) {
-	MessageBox(appName, fmt.Sprintln(v...), windows.MB_OK)
+	MessageBox(AppName, fmt.Sprintln(v...), windows.MB_OK)
 	// 退出程序
 	os.Exit(0)
 }
 
 // 检查是否为单实例
 func checkSingleInstance() {
-	pidFilePath := filepath.Join(os.TempDir(), pidFile)
+	pidFilePath := filepath.Join(os.TempDir(), PidFile)
 	if isFileExist(pidFilePath) {
 		bytes, err := os.ReadFile(pidFilePath)
 		if err == nil {
@@ -114,8 +123,8 @@ func onReady() {
 	if err == nil {
 		systray.SetIcon(bytes)
 	}
-	systray.SetTitle(appName)
-	systray.SetTooltip(appName)
+	systray.SetTitle(AppName)
+	systray.SetTooltip(AppName)
 
 	// 左键点击托盘时显示菜单
 	systray.SetOnClick(func(menu systray.IMenu) {
@@ -124,19 +133,20 @@ func onReady() {
 		}
 	})
 
-	systray.AddMenuItem(appName, appName).Click(func() {
+	systray.AddMenuItem(AppName, AppName).Click(func() {
 		// 点击打开主页
 		_ = openBrowser("https://github.com/junlongzzz/gohomo")
-	})
-	systray.AddMenuItem("Mihomo", "Mihomo").Click(func() {
-		// 点击打开主页
-		_ = openBrowser("https://github.com/MetaCubeX/mihomo")
 	})
 
 	// 分割线
 	systray.AddSeparator()
 
-	sysProxyItem := systray.AddMenuItemCheckbox("System proxy", "Set/Unset system proxy", getProxyEnable())
+	systray.AddMenuItem("Mihomo", "Mihomo").Click(func() {
+		// 点击打开主页
+		_ = openBrowser("https://github.com/MetaCubeX/mihomo")
+	})
+
+	sysProxyItem := systray.AddMenuItemCheckbox("System Proxy", "Set or Unset", getProxyEnable())
 	sysProxyItem.Click(func() {
 		if sysProxyItem.Checked() {
 			if unsetProxy() {
@@ -149,15 +159,15 @@ func onReady() {
 		}
 	})
 
-	restartCoreItem := systray.AddMenuItem("Restart core", "Restart core")
+	restartCoreItem := systray.AddMenuItem("Restart Core", "Restart Core")
 	restartCoreItem.Click(func() {
 		if !restartCore() {
-			MessageBox(appName, "Failed to restart core", windows.MB_OK)
+			MessageBox(AppName, "Failed to restart core", windows.MB_OK)
 		}
 	})
 
 	if coreConfig.ExternalUiAddr != "" {
-		dashboardItem := systray.AddMenuItem("Core dashboard", "Core dashboard")
+		dashboardItem := systray.AddMenuItem("Core Dashboard", "Core Dashboard")
 		dashboardItem.AddSubMenuItem("External UI", "External UI").Click(func() {
 			_ = openBrowser(coreConfig.ExternalUiAddr)
 		})
@@ -170,7 +180,7 @@ func onReady() {
 	systray.AddSeparator()
 
 	// 打开本地工作目录
-	systray.AddMenuItem("Open work directory", "Open work directory").Click(func() {
+	systray.AddMenuItem("Open Work Directory", "Open Work Directory").Click(func() {
 		_ = openDirectory(workDir)
 	})
 
@@ -178,9 +188,9 @@ func onReady() {
 	systray.AddSeparator()
 
 	systray.AddMenuItem("About", "About").Click(func() {
-		about := fmt.Sprintf("Name: %s\nDescription: %s\nBuild hash: %s\n---\nWork directory: %s\nCore directory: %s\nCore name: %s",
-			appName, "Wrapper for Mihomo written in Golang.", build, workDir, coreDir, coreName)
-		MessageBox(appName, about, windows.MB_OK)
+		about := fmt.Sprintf("Name: %s\nDescription: %s\nBuild Hash: %s\n---\nWork Directory: %s\nCore Directory: %s\nCore Path: %s",
+			AppName, "Wrapper for Mihomo written in Golang.", build, workDir, coreDir, corePath)
+		MessageBox(AppName, about, windows.MB_OK)
 	})
 
 	exitItem := systray.AddMenuItem("Exit", "Exit")
