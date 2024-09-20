@@ -46,13 +46,15 @@ func main() {
 	log.Println("Core directory:", coreDir)
 
 	// 查找工作目录下是否存在文件名以 mihomo 开头，以 .exe 结尾的文件
-	_ = filepath.Walk(workDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.WalkDir(workDir, func(path string, info os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if strings.HasPrefix(strings.ToLower(info.Name()), "mihomo") &&
-			strings.HasSuffix(strings.ToLower(info.Name()), ".exe") &&
-			!info.IsDir() {
+		if info.IsDir() && path != workDir {
+			// 跳过子目录
+			return filepath.SkipDir
+		}
+		if strings.HasPrefix(strings.ToLower(info.Name()), "mihomo") && strings.HasSuffix(strings.ToLower(info.Name()), ".exe") {
 			corePath = path
 			log.Println("Found core:", corePath)
 			return fmt.Errorf("found core") // 找到文件后返回自定义错误退出遍历
