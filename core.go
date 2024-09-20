@@ -69,6 +69,10 @@ func loadCoreConfig() {
 		}
 		controller := strings.Split(coreConfig.ExternalController, ":")
 		if controller != nil && len(controller) == 2 {
+			if controller[0] == "" {
+				// 形如 :9090 的格式，监听的是所有地址，管理面板就默认使用本地地址
+				controller[0] = "127.0.0.1"
+			}
 			// 本地面板地址
 			coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s/%s/#/setup?hostname=%s&port=%s&secret=%s",
 				coreConfig.ExternalController, uiPath,
