@@ -15,7 +15,7 @@ var (
 	coreDir    string
 	coreName   string
 	corePath   string
-	coreConfig CoreConfig
+	coreConfig *CoreConfig
 
 	mutex sync.Mutex // 互斥锁
 )
@@ -48,7 +48,8 @@ func loadCoreConfig() {
 		fatal("Error reading config.yaml:", err)
 	}
 
-	if err := yaml.Unmarshal(bytes, &coreConfig); err != nil {
+	coreConfig = &CoreConfig{}
+	if err := yaml.Unmarshal(bytes, coreConfig); err != nil {
 		fatal("Error parsing config.yaml:", err)
 	}
 

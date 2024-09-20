@@ -165,6 +165,11 @@ func onReady() {
 	restartCoreItem.Click(func() {
 		if !restartCore() {
 			MessageBox(AppName, "Failed to restart core", windows.MB_OK)
+		} else {
+			// 重新加载核心配置
+			loadCoreConfig()
+			// 重新设置代理
+			setCoreProxy()
 		}
 	})
 
