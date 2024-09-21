@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/energye/systray"
-	"golang.org/x/sys/windows"
 )
 
 const (
@@ -92,7 +91,7 @@ func main() {
 
 // 发生错误退出程序时的提示，避免无法看到错误消息
 func fatal(v ...any) {
-	MessageBox(AppName, fmt.Sprintln(v...), windows.MB_OK)
+	MessageBoxAlert(AppName, fmt.Sprintln(v...))
 	// 退出程序
 	os.Exit(0)
 }
@@ -163,13 +162,15 @@ func onReady() {
 
 	restartCoreItem := systray.AddMenuItem("Restart Core", "Restart Core")
 	restartCoreItem.Click(func() {
-		if !restartCore() {
-			MessageBox(AppName, "Failed to restart core", windows.MB_OK)
-		} else {
+		if restartCore() {
 			// 重新加载核心配置
 			loadCoreConfig()
-			// 重新设置代理
-			setCoreProxy()
+			if sysProxyItem != nil && sysProxyItem.Checked() {
+				// 重新设置代理
+				setCoreProxy()
+			}
+		} else {
+			MessageBoxAlert(AppName, "Failed to restart core")
 		}
 	})
 
@@ -197,7 +198,7 @@ func onReady() {
 	systray.AddMenuItem("About", "About").Click(func() {
 		about := fmt.Sprintf("Name: %s\nDescription: %s\nBuild Hash: %s\n---\nWork Directory: %s\nCore Directory: %s\nCore Path: %s",
 			AppName, "Wrapper for Mihomo written in Golang.", build, workDir, coreDir, corePath)
-		MessageBox(AppName, about, windows.MB_OK)
+		MessageBoxAlert(AppName, about)
 	})
 
 	exitItem := systray.AddMenuItem("Exit", "Exit")

@@ -121,6 +121,17 @@ func MessageBox(title, content string, flags uint32) int {
 	return int(ret)
 }
 
+// MessageBoxAlert 显示带确认按钮的消息框
+func MessageBoxAlert(title, content string) int {
+	return MessageBox(title, content, windows.MB_OK|windows.MB_ICONINFORMATION)
+}
+
+// MessageBoxConfirm 显示带确认和取消按钮的消息框
+// 返回值为true表示用户点击了确认按钮，否则为取消按钮
+func MessageBoxConfirm(title, content string) bool {
+	return MessageBox(title, content, windows.MB_OKCANCEL|windows.MB_ICONQUESTION) == 1
+}
+
 // SetDPIAware 启用高 DPI 感知
 func SetDPIAware() {
 	if procSetProcessDpiAwareness.Find() == nil {
