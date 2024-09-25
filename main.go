@@ -96,24 +96,28 @@ func fatal(v ...any) {
 	os.Exit(0)
 }
 
+// 获取pid文件路径
+func getPidFilePath() string {
+	// 临时目录内
+	return filepath.Join(os.TempDir(), PidFile)
+}
+
 // 检查是否为单实例
 func checkSingleInstance() {
-	pidFilePath := filepath.Join(os.TempDir(), PidFile)
+	pidFilePath := getPidFilePath()
 	if isFileExist(pidFilePath) {
-		bytes, err := os.ReadFile(pidFilePath)
-		if err == nil {
+		bytes, _ := os.ReadFile(pidFilePath)
+		if bytes != nil && len(bytes) > 0 {
 			// 判断pid对应进程是否还在运行
 			pid, err := strconv.Atoi(string(bytes))
-			if err == nil && isProcessRunningByPid(pid) {
+			if err == nil && pid > 0 && isProcessRunningByPid(pid) {
 				fatal("Another instance of Gohomo is running.")
 			}
 		}
 	}
 
-	// 当前进程的pid
-	pid := os.Getpid()
-	// 保存pid文件
-	err := os.WriteFile(pidFilePath, []byte(strconv.Itoa(pid)), 0644)
+	// 保存当前进程的pid到文件
+	err := os.WriteFile(pidFilePath, []byte(strconv.Itoa(os.Getpid())), 0644)
 	if err != nil {
 		fatal("Failed to write pid file:", err)
 	}
@@ -207,6 +211,8 @@ func onReady() {
 
 func onExit() {
 	// 退出程序后的处理操作
+	// 清理pid文件，写入-1
+	_ = os.WriteFile(getPidFilePath(), []byte("-1"), 0644)
 	unsetProxy()
 	stopCore()
 	os.Exit(0)
