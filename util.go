@@ -23,7 +23,7 @@ func isProcessRunning(processName string) bool {
 	if processName == "" {
 		return false
 	}
-	cmd := ExecCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName))
+	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Println("Error check running:", string(output), err)
@@ -37,7 +37,7 @@ func isProcessRunningByPid(pid int) bool {
 	if pid == 0 {
 		return false
 	}
-	cmd := ExecCommand("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid))
+	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Println("Error check running:", string(output), err)
@@ -51,7 +51,7 @@ func killProcess(processName string) error {
 	if processName == "" {
 		return fmt.Errorf("process name is empty")
 	}
-	cmd := ExecCommand("taskkill", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName), "/F")
+	cmd := execCommand("taskkill", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName), "/F")
 	return cmd.Run()
 }
 
@@ -60,7 +60,7 @@ func killProcessByPid(pid int) error {
 	if pid <= 0 {
 		return fmt.Errorf("pid is invalid")
 	}
-	cmd := ExecCommand("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F")
+	cmd := execCommand("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F")
 	return cmd.Run()
 }
 
@@ -112,28 +112,28 @@ func openDirectory(dir string) error {
 	return cmd.Start()
 }
 
-// MessageBox 返回值对应不同的按钮，flags表示展示MB_xx哪些操作按钮
+// 返回值对应不同的按钮，flags表示展示MB_xx哪些操作按钮
 // 展示的时候会阻塞当前线程，直到用户点击按钮
-func MessageBox(title, content string, flags uint32) int {
+func messageBox(title, content string, flags uint32) int {
 	captionPtr, _ := windows.UTF16PtrFromString(title)
 	textPtr, _ := windows.UTF16PtrFromString(content)
 	ret, _ := windows.MessageBox(0, textPtr, captionPtr, flags)
 	return int(ret)
 }
 
-// MessageBoxAlert 显示带确认按钮的消息框
-func MessageBoxAlert(title, content string) int {
-	return MessageBox(title, content, windows.MB_OK|windows.MB_ICONINFORMATION)
+// 显示带确认按钮的消息框
+func messageBoxAlert(title, content string) int {
+	return messageBox(title, content, windows.MB_OK|windows.MB_ICONINFORMATION)
 }
 
-// MessageBoxConfirm 显示带确认和取消按钮的消息框
+// 显示带确认和取消按钮的消息框
 // 返回值为true表示用户点击了确认按钮，否则为取消按钮
-func MessageBoxConfirm(title, content string) bool {
-	return MessageBox(title, content, windows.MB_OKCANCEL|windows.MB_ICONQUESTION) == 1
+func messageBoxConfirm(title, content string) bool {
+	return messageBox(title, content, windows.MB_OKCANCEL|windows.MB_ICONQUESTION) == 1
 }
 
-// SetDPIAware 启用高 DPI 感知
-func SetDPIAware() {
+// 启用高 DPI 感知
+func setDPIAware() {
 	if procSetProcessDpiAwareness.Find() == nil {
 		// 在 Windows 10 及以上系统启用高 DPI 感知
 		// 2 表示 DPI_AWARENESS_PER_MONITOR_AWARE，适应不同显示器的 DPI
@@ -150,8 +150,8 @@ func SetDPIAware() {
 	}
 }
 
-// ExecCommand 创建命令并设置 CREATE_NO_WINDOW
-func ExecCommand(name string, arg ...string) *exec.Cmd {
+// 创建命令并设置 CREATE_NO_WINDOW
+func execCommand(name string, arg ...string) *exec.Cmd {
 	cmd := exec.Command(name, arg...)
 	cmd.SysProcAttr = &windows.SysProcAttr{
 		CreationFlags: windows.CREATE_NO_WINDOW,

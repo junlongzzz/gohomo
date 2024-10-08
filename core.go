@@ -96,11 +96,11 @@ func startCore() bool {
 	}
 
 	// 启动core程序
-	cmd := ExecCommand(corePath, "-d", coreDir)
-	// 丢弃程序输出
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	cmd.Stdin = nil
+	cmd := execCommand(corePath, "-d", coreDir)
+	// 重定向输出到log
+	cmd.Stdout = log.Writer()
+	cmd.Stderr = log.Writer()
+	//cmd.Stdin = nil
 	if err := cmd.Start(); err != nil {
 		log.Println("Failed to start core:", err)
 		return false
