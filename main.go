@@ -172,10 +172,10 @@ func onReady() {
 			"Build Hash: %s\n"+
 			"---\n"+
 			"Work Directory: %s\n"+
+			"Log Directory: %s\n"+
 			"Core Directory: %s\n"+
-			"Core Path: %s\n"+
-			"Log Directory: %s",
-			AppName, "Wrapper for Mihomo written in Golang.", build, workDir, coreDir, corePath, logDir)
+			"Core Path: %s",
+			AppName, "Wrapper for Mihomo written in Golang.", build, workDir, logDir, coreDir, corePath)
 		messageBoxAlert(AppName, about)
 	})
 
@@ -226,8 +226,8 @@ func main() {
 	// 将日志输出重定向到文件
 	log.SetOutput(logFile)
 
-	log.Println("Working directory:", workDir)
-	log.Println("Core directory:", coreDir)
+	log.Println("Build hash:", build)
+	log.Println("Work directory:", workDir)
 
 	// 查找工作目录下是否存在文件名以 mihomo 开头，以 .exe 结尾的文件
 	_ = filepath.WalkDir(workDir, func(path string, info os.DirEntry, err error) error {
