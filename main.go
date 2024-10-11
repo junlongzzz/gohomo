@@ -16,6 +16,8 @@ import (
 const (
 	// AppName 程序名称
 	AppName = "Gohomo"
+	// CoreShowName 核心名称
+	CoreShowName = "Mihomo"
 )
 
 var (
@@ -96,16 +98,9 @@ func onReady() {
 		systray.SetIcon(bytes)
 	}
 	systray.SetTitle(AppName)
-	systray.SetTooltip(fmt.Sprintf("%s %s", AppName, build))
+	systray.SetTooltip(AppName)
 
-	// 左键点击托盘时显示菜单
-	systray.SetOnClick(func(menu systray.IMenu) {
-		if menu != nil {
-			_ = menu.ShowMenu()
-		}
-	})
-
-	systray.AddMenuItem(AppName, AppName).Click(func() {
+	systray.AddMenuItem(fmt.Sprintf("%s %s", AppName, build), AppName).Click(func() {
 		// 点击打开主页
 		_ = openBrowser("https://github.com/junlongzzz/gohomo")
 	})
@@ -113,7 +108,8 @@ func onReady() {
 	// 分割线
 	systray.AddSeparator()
 
-	systray.AddMenuItem("Mihomo", "Mihomo").Click(func() {
+	coreItem := systray.AddMenuItem(CoreShowName, CoreShowName)
+	coreItem.Click(func() {
 		// 点击打开主页
 		_ = openBrowser("https://github.com/MetaCubeX/mihomo")
 	})
@@ -133,9 +129,12 @@ func onReady() {
 
 	restartCoreItem := systray.AddMenuItem("Restart Core", "Restart Core")
 	restartCoreItem.Click(func() {
+		// 重新加载核心配置
+		if err := loadCoreConfig(); err != nil {
+			messageBoxAlert(AppName, fmt.Sprint(err))
+			return
+		}
 		if restartCore() {
-			// 重新加载核心配置
-			loadCoreConfig()
 			if sysProxyItem != nil && sysProxyItem.Checked() {
 				// 重新设置代理
 				setCoreProxy()
@@ -174,13 +173,26 @@ func onReady() {
 			"Work Directory: %s\n"+
 			"Log Directory: %s\n"+
 			"Core Directory: %s\n"+
-			"Core Path: %s",
-			AppName, "Wrapper for Mihomo written in Golang.", build, workDir, logDir, coreDir, corePath)
+			"Core Path: %s\n"+
+			"Core Version: %s",
+			AppName, "Wrapper for Mihomo written in Golang.", build, workDir, logDir, coreDir, corePath, getCoreVersion())
 		messageBoxAlert(AppName, about)
 	})
 
 	exitItem := systray.AddMenuItem("Exit", "Exit")
 	exitItem.Click(func() { systray.Quit() })
+
+	// 托盘点击事件处理函数
+	var clickFn = func(menu systray.IMenu) {
+		if menu != nil {
+			coreItem.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
+			_ = menu.ShowMenu()
+		}
+	}
+	// 左键点击托盘时显示菜单
+	systray.SetOnClick(clickFn)
+	// 右键点击托盘
+	systray.SetOnRClick(clickFn)
 }
 
 func onExit() {
@@ -206,6 +218,14 @@ func main() {
 	workDir = filepath.Dir(executable)
 	coreDir = filepath.Join(workDir, "core")
 	logDir = filepath.Join(workDir, "logs")
+
+	if !isFileExist(coreDir) {
+		// core目录不存在则自动创建
+		err := os.Mkdir(coreDir, 0755)
+		if err != nil {
+			fatal("Failed to create core directory:", err)
+		}
+	}
 
 	if !isFileExist(logDir) {
 		// 日志目录不存在则自动创建
@@ -238,7 +258,8 @@ func main() {
 			// 跳过子目录
 			return filepath.SkipDir
 		}
-		if strings.HasPrefix(strings.ToLower(info.Name()), "mihomo") && strings.HasSuffix(strings.ToLower(info.Name()), ".exe") {
+		name := strings.ToLower(info.Name())
+		if strings.HasPrefix(name, strings.ToLower(CoreShowName)) && strings.HasSuffix(name, ".exe") {
 			corePath = path
 			log.Println("Found core:", corePath)
 			return fmt.Errorf("found core") // 找到文件后返回自定义错误退出遍历
@@ -252,16 +273,10 @@ func main() {
 		coreName = filepath.Base(corePath)
 	}
 
-	if !isFileExist(coreDir) {
-		// core目录不存在则自动创建
-		err := os.Mkdir(coreDir, 0755)
-		if err != nil {
-			fatal("Failed to create core directory:", err)
-		}
-	}
-
 	// 加载核心配置
-	loadCoreConfig()
+	if err := loadCoreConfig(); err != nil {
+		fatal(err)
+	}
 
 	if startCore() {
 		// 设置系统代理

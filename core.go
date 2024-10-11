@@ -37,24 +37,24 @@ type CoreConfig struct {
 }
 
 // 加载配置文件
-func loadCoreConfig() {
+func loadCoreConfig() error {
 	configPath := filepath.Join(coreDir, "config.yaml")
 	if !isFileExist(configPath) {
-		fatal("config.yaml not found, please put it in", configPath)
+		return fmt.Errorf("config file not found: %s", configPath)
 	}
 
 	bytes, err := os.ReadFile(configPath)
 	if err != nil {
-		fatal("Error reading config.yaml:", err)
+		return fmt.Errorf("failed to read config file: %v", err)
 	}
 
 	coreConfig = &CoreConfig{}
 	if err := yaml.Unmarshal(bytes, coreConfig); err != nil {
-		fatal("Error parsing config.yaml:", err)
+		return fmt.Errorf("failed to unmarshal config file: %v", err)
 	}
 
 	if coreConfig.MixedPort == 0 && coreConfig.Port == 0 {
-		fatal("mixed-port and port cannot both be 0")
+		return fmt.Errorf("mixed-port and port cannot both be empty")
 	}
 
 	coreConfig.HttpProxyPort = coreConfig.MixedPort
@@ -83,6 +83,8 @@ func loadCoreConfig() {
 				controller[0], controller[1], coreConfig.Secret)
 		}
 	}
+
+	return nil
 }
 
 // 启动core程序
@@ -147,4 +149,15 @@ func isCoreRunning() bool {
 // 设置系统代理为core配置的代理
 func setCoreProxy() bool {
 	return setProxy(true, fmt.Sprintf("127.0.0.1:%d", coreConfig.HttpProxyPort), defaultBypass)
+}
+
+// 获取core版本号
+func getCoreVersion() string {
+	if output, err := execCommand(corePath, "-v").CombinedOutput(); err == nil {
+		split := strings.Split(string(output), " ")
+		if len(split) > 2 && split[0] == CoreShowName {
+			return split[2]
+		}
+	}
+	return ""
 }
