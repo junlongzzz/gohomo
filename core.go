@@ -120,9 +120,9 @@ func stopCore() bool {
 		return true
 	}
 
-	// 进程已经不存在或退出，通过进程名杀死
-	if err := killProcess(coreName); err != nil {
-		log.Println("Failed to kill core:", err)
+	// 结束进程
+	if err := killProcessGracefully(coreName); err != nil {
+		log.Println("Failed to stop core:", err)
 		return false
 	}
 

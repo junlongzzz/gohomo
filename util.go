@@ -1,20 +1,28 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/windows"
 )
 
 var (
-	user32                     = windows.NewLazySystemDLL("user32.dll")
+	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
+	user32   = windows.NewLazySystemDLL("user32.dll")
+	shCore   = windows.NewLazySystemDLL("SHCore.dll")
+
+	attachConsole              = kernel32.NewProc("AttachConsole")
+	setConsoleCtrlHandler      = kernel32.NewProc("SetConsoleCtrlHandler")
+	generateConsoleCtrlEvent   = kernel32.NewProc("GenerateConsoleCtrlEvent")
 	procSetProcessDPIAware     = user32.NewProc("SetProcessDPIAware")
-	shCore                     = windows.NewLazySystemDLL("SHCore.dll")
 	procSetProcessDpiAwareness = shCore.NewProc("SetProcessDpiAwareness")
 )
 
@@ -55,6 +63,33 @@ func killProcess(processName string) error {
 	return cmd.Run()
 }
 
+// 优雅的退出进程
+// https://github.com/GUI-for-Cores/GUI.for.Clash/blob/main/bridge/exec_windows.go#L21
+func killProcessGracefully(processName string) error {
+	process, err := findProcess(processName)
+	if err != nil {
+		return err
+	}
+	// 尝试附加到控制台
+	call, _, err := attachConsole.Call(uintptr(process.Pid))
+	if call == 0 && !errors.Is(err, syscall.ERROR_ACCESS_DENIED) {
+		return err
+	}
+	// 尝试设置控制台处理程序
+	call, _, err = setConsoleCtrlHandler.Call(0, 1)
+	if call == 0 {
+		return err
+	}
+	// 发送 CTRL_BREAK_EVENT 信号，因为 windows 不支持信号
+	call, _, err = generateConsoleCtrlEvent.Call(syscall.CTRL_BREAK_EVENT, uintptr(process.Pid))
+	if call == 0 {
+		return err
+	}
+	// 等待进程退出
+	_, _ = process.Wait()
+	return nil
+}
+
 // 根据 pid 杀进程
 func killProcessByPid(pid int) error {
 	if pid <= 0 {
@@ -62,6 +97,36 @@ func killProcessByPid(pid int) error {
 	}
 	cmd := execCommand("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F")
 	return cmd.Run()
+}
+
+// 根据进程名称查找进程ID
+func findProcessId(processName string) int {
+	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && strings.ToLower(fields[0]) == strings.ToLower(processName) {
+			pid, err := strconv.Atoi(fields[1])
+			if err == nil {
+				return pid
+			}
+		}
+	}
+	return 0
+}
+
+// 根据名称查找进程
+func findProcess(processName string) (*os.Process, error) {
+	processId := findProcessId(processName)
+	if processId == 0 {
+		return nil, fmt.Errorf("process %s not found", processName)
+	}
+	return os.FindProcess(processId)
 }
 
 // 判断文件是否存在
@@ -150,11 +215,14 @@ func setDPIAware() {
 	}
 }
 
-// 创建命令并设置 CREATE_NO_WINDOW
+// 创建控制台命令，不显示窗口
 func execCommand(name string, arg ...string) *exec.Cmd {
 	cmd := exec.Command(name, arg...)
 	cmd.SysProcAttr = &windows.SysProcAttr{
-		CreationFlags: windows.CREATE_NO_WINDOW,
+		// 设置控制台字符集和新进程组
+		CreationFlags: windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_NEW_PROCESS_GROUP,
+		// 隐藏窗口
+		HideWindow: true,
 	}
 	return cmd
 }

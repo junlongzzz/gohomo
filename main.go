@@ -96,7 +96,7 @@ func onReady() {
 		systray.SetIcon(bytes)
 	}
 	systray.SetTitle(AppName)
-	systray.SetTooltip(fmt.Sprintf("%s (%s)", AppName, build))
+	systray.SetTooltip(fmt.Sprintf("%s %s", AppName, build))
 
 	// 左键点击托盘时显示菜单
 	systray.SetOnClick(func(menu systray.IMenu) {
