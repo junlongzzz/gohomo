@@ -11,30 +11,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// CoreConfig core配置信息
+type CoreConfig struct {
+	Port               int
+	MixedPort          int
+	ExternalController string
+	Secret             string
+	ExternalUi         string
+	ExternalUiName     string
+
+	// 额外自定义字段，不在yaml配置文件中
+	ExternalUiAddr string // 外部ui地址
+	OfficialUiAddr string // 官方ui地址
+	YACDUiAddr     string // Yet Another Clash Dashboard ui地址
+	HttpProxyPort  int    // http代理端口
+	RunConfigPath  string // 运行配置文件路径
+}
+
 var (
-	coreDir    string
-	coreName   string
-	corePath   string
-	coreConfig *CoreConfig
+	coreDir  string
+	coreName string
+	corePath string
+
+	coreConfig = &CoreConfig{
+		// 配置文件中不存在时需要赋予默认值的选项
+		ExternalController: "127.0.0.1:9090",
+		Secret:             "123456", // not secure!
+		ExternalUi:         "ui",
+	}
 
 	mutex sync.Mutex // 互斥锁
 )
-
-// CoreConfig core配置信息
-type CoreConfig struct {
-	Mode               string `yaml:"mode"`
-	MixedPort          int    `yaml:"mixed-port"`
-	Port               int    `yaml:"port"`
-	ExternalController string `yaml:"external-controller"`
-	Secret             string `yaml:"secret"`
-	ExternalUi         string `yaml:"external-ui"`
-	ExternalUiName     string `yaml:"external-ui-name"`
-
-	// 额外自定义字段，不在yaml配置文件中
-	ExternalUiAddr string `yaml:"-"` // 外部ui地址
-	OfficialUiAddr string `yaml:"-"` // 官方ui地址
-	HttpProxyPort  int    `yaml:"-"` // http代理端口
-}
 
 // 加载配置文件
 func loadCoreConfig() error {
@@ -43,45 +50,90 @@ func loadCoreConfig() error {
 		return fmt.Errorf("config file not found: %s", configPath)
 	}
 
-	bytes, err := os.ReadFile(configPath)
+	configBytes, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %v", err)
 	}
 
-	coreConfig = &CoreConfig{}
-	if err := yaml.Unmarshal(bytes, coreConfig); err != nil {
+	// 解析yaml至map以获取到所有配置
+	var configMap = map[string]any{}
+	if err = yaml.Unmarshal(configBytes, &configMap); err != nil {
 		return fmt.Errorf("failed to unmarshal config file: %v", err)
 	}
 
-	if coreConfig.MixedPort == 0 && coreConfig.Port == 0 {
-		return fmt.Errorf("mixed-port and port cannot both be empty")
-	}
-
-	coreConfig.HttpProxyPort = coreConfig.MixedPort
-	if coreConfig.HttpProxyPort == 0 {
+	// 开始从map中获取配置项
+	if configMap["port"] != nil {
+		coreConfig.Port = configMap["port"].(int)
 		coreConfig.HttpProxyPort = coreConfig.Port
 	}
 
-	if coreConfig.ExternalController != "" {
-		uiPath := "ui"
-		if coreConfig.ExternalUiName != "" {
-			// 去除开头/末尾的斜杠
-			uiPath += "/" + strings.Trim(coreConfig.ExternalUiName, "/")
+	if configMap["mixed-port"] != nil {
+		coreConfig.MixedPort = configMap["mixed-port"].(int)
+		coreConfig.HttpProxyPort = coreConfig.MixedPort
+	}
+
+	if configMap["external-controller"] != nil && configMap["external-controller"] != "" {
+		coreConfig.ExternalController = configMap["external-controller"].(string)
+	} else {
+		// 赋默认值
+		configMap["external-controller"] = coreConfig.ExternalController
+	}
+
+	if configMap["secret"] != nil && configMap["secret"] != "" {
+		coreConfig.Secret = configMap["secret"].(string)
+	} else {
+		// 赋默认值
+		configMap["secret"] = coreConfig.Secret
+	}
+
+	if configMap["external-ui"] != nil && configMap["external-ui"] != "" {
+		coreConfig.ExternalUi = configMap["external-ui"].(string)
+	} else {
+		// 赋默认值
+		configMap["external-ui"] = coreConfig.ExternalUi
+	}
+
+	if configMap["external-ui-name"] != nil {
+		coreConfig.ExternalUiName = configMap["external-ui-name"].(string)
+	}
+
+	if coreConfig.HttpProxyPort == 0 {
+		return fmt.Errorf("http proxy port not set")
+	}
+
+	uiUrlPath := "/ui"
+	if coreConfig.ExternalUiName != "" {
+		// 去除开头/末尾的斜杠
+		uiUrlPath += "/" + strings.Trim(coreConfig.ExternalUiName, "/")
+	}
+	controller := strings.Split(coreConfig.ExternalController, ":")
+	if controller != nil && len(controller) == 2 {
+		if controller[0] == "" || controller[0] == "0.0.0.0" {
+			// 形如 :9090 的格式，监听的是所有地址，管理面板就默认使用本地地址
+			controller[0] = "127.0.0.1"
 		}
-		controller := strings.Split(coreConfig.ExternalController, ":")
-		if controller != nil && len(controller) == 2 {
-			if controller[0] == "" || controller[0] == "0.0.0.0" {
-				// 形如 :9090 的格式，监听的是所有地址，管理面板就默认使用本地地址
-				controller[0] = "127.0.0.1"
-			}
-			// 本地面板地址
-			coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s/%s/#/setup?hostname=%s&port=%s&secret=%s",
-				strings.Join(controller, ":"), uiPath,
-				controller[0], controller[1], coreConfig.Secret)
-			// 官方面板地址
-			coreConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/#/setup?http=true&hostname=%s&port=%s&secret=%s",
-				controller[0], controller[1], coreConfig.Secret)
-		}
+		// 本地面板地址
+		coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/#/setup?hostname=%s&port=%s&secret=%s",
+			strings.Join(controller, ":"), uiUrlPath,
+			controller[0], controller[1], coreConfig.Secret)
+		// 官方面板地址
+		coreConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/#/setup?http=true&hostname=%s&port=%s&secret=%s",
+			controller[0], controller[1], coreConfig.Secret)
+		// Yet Another Clash Dashboard
+		coreConfig.YACDUiAddr = fmt.Sprintf("https://yacd.metacubex.one/?hostname=%s&port=%s&secret=%s",
+			controller[0], controller[1], coreConfig.Secret)
+	}
+
+	var out []byte
+	if out, err = yaml.Marshal(&configMap); err != nil {
+		return fmt.Errorf("failed to marshal config file: %v", err)
+	}
+	if coreConfig.RunConfigPath == "" {
+		coreConfig.RunConfigPath = filepath.Join(coreDir, "config.auto-gen")
+	}
+	// 保存到运行配置文件
+	if err = os.WriteFile(coreConfig.RunConfigPath, out, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %v", err)
 	}
 
 	return nil
@@ -98,7 +150,7 @@ func startCore() bool {
 	}
 
 	// 启动core程序
-	cmd := execCommand(corePath, "-d", coreDir)
+	cmd := execCommand(corePath, "-d", coreDir, "-f", coreConfig.RunConfigPath)
 	// 重定向输出到log
 	cmd.Stdout = log.Writer()
 	cmd.Stderr = log.Writer()

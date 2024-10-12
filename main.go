@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -144,15 +145,16 @@ func onReady() {
 		}
 	})
 
-	if coreConfig.ExternalUiAddr != "" {
-		dashboardItem := systray.AddMenuItem("Core Dashboard", "Core Dashboard")
-		dashboardItem.AddSubMenuItem("External UI", "External UI").Click(func() {
-			_ = openBrowser(coreConfig.ExternalUiAddr)
-		})
-		dashboardItem.AddSubMenuItem("Official UI", "Official UI").Click(func() {
-			_ = openBrowser(coreConfig.OfficialUiAddr)
-		})
-	}
+	dashboardItem := systray.AddMenuItem("Core Dashboard", "Core Dashboard")
+	dashboardItem.AddSubMenuItem("External UI", "External UI").Click(func() {
+		_ = openBrowser(coreConfig.ExternalUiAddr)
+	})
+	dashboardItem.AddSubMenuItem("Official UI", "Official UI").Click(func() {
+		_ = openBrowser(coreConfig.OfficialUiAddr)
+	})
+	dashboardItem.AddSubMenuItem("YACD UI", "YACD UI").Click(func() {
+		_ = openBrowser(coreConfig.YACDUiAddr)
+	})
 
 	// 分割线
 	systray.AddSeparator()
@@ -234,6 +236,7 @@ func main() {
 			fatal("Failed to create log directory:", err)
 		}
 	}
+
 	// 删除7天前的日志文件
 	go delOutdatedLogs(7 * 24 * time.Hour)
 	// 使用当天日期作为日志文件名
@@ -245,6 +248,16 @@ func main() {
 	defer logFile.Close()
 	// 将日志输出重定向到文件
 	log.SetOutput(logFile)
+
+	defer func() {
+		// 捕获panic
+		if r := recover(); r != nil {
+			panicMsg := fmt.Sprintf("Panic: %v", r)
+			log.Println(panicMsg)
+			log.Println("Stack trace:\n", string(debug.Stack()))
+			messageBoxAlert(AppName, panicMsg)
+		}
+	}()
 
 	log.Println("Build hash:", build)
 	log.Println("Work directory:", workDir)
@@ -282,7 +295,7 @@ func main() {
 		// 设置系统代理
 		setCoreProxy()
 	} else {
-		fatal("Failed to start core", corePath)
+		fatal("Failed to start core:", corePath)
 	}
 
 	// 系统托盘
