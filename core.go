@@ -13,6 +13,7 @@ import (
 
 // CoreConfig core配置信息
 type CoreConfig struct {
+	// 本程序需要的一些配置字段
 	Port               int
 	MixedPort          int
 	ExternalController string

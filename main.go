@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/energye/systray"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -162,6 +164,38 @@ func onReady() {
 	// 打开本地工作目录
 	systray.AddMenuItem("Open Work Directory", "Open Work Directory").Click(func() {
 		_ = openDirectory(workDir)
+	})
+
+	var openShellFn = func(shell string) {
+		cmd := exec.Command(shell)
+		cmd.Dir = workDir
+		// 设置代理环境变量
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("HTTP_PROXY=http://127.0.0.1:%d", coreConfig.HttpProxyPort),
+			fmt.Sprintf("HTTPS_PROXY=http://127.0.0.1:%d", coreConfig.HttpProxyPort))
+		cmd.SysProcAttr = &windows.SysProcAttr{
+			CreationFlags: windows.CREATE_NEW_CONSOLE | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_NEW_PROCESS_GROUP,
+		}
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			messageBoxAlert(AppName, fmt.Sprintf("Failed to start %s: %v", shell, err))
+		}
+	}
+	// 打开powershell
+	systray.AddMenuItem("Open PowerShell", "Open PowerShell").Click(func() {
+		ps := "pwsh.exe"
+		// 先判断 pwsh.exe 是否在环境变量内存在
+		if _, err := exec.LookPath(ps); err != nil {
+			// 不存在使用系统默认的 PowerShell
+			ps = "powershell.exe"
+		}
+		openShellFn(ps)
+	})
+	// 打开命令行
+	systray.AddMenuItem("Open Command Prompt", "Open Command Prompt").Click(func() {
+		openShellFn("cmd.exe")
 	})
 
 	// 分割线
