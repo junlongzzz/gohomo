@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,27 +103,25 @@ func loadCoreConfig() error {
 		return fmt.Errorf("http proxy port not set")
 	}
 
-	uiUrlPath := "/ui"
-	if coreConfig.ExternalUiName != "" {
-		// 去除开头/末尾的斜杠
-		uiUrlPath += "/" + strings.Trim(coreConfig.ExternalUiName, "/")
-	}
-	controller := strings.Split(coreConfig.ExternalController, ":")
-	if controller != nil && len(controller) == 2 {
-		if controller[0] == "" || controller[0] == "0.0.0.0" {
+	if host, port, err := net.SplitHostPort(coreConfig.ExternalController); err == nil {
+		uiUrlPath := "/ui"
+		if coreConfig.ExternalUiName != "" {
+			// 去除开头/末尾的斜杠
+			uiUrlPath += "/" + strings.Trim(coreConfig.ExternalUiName, "/")
+		}
+		if host == "" || host == "0.0.0.0" {
 			// 形如 :9090 的格式，监听的是所有地址，管理面板就默认使用本地地址
-			controller[0] = "127.0.0.1"
+			host = "127.0.0.1"
 		}
 		// 本地面板地址
 		coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/#/setup?hostname=%s&port=%s&secret=%s",
-			strings.Join(controller, ":"), uiUrlPath,
-			controller[0], controller[1], coreConfig.Secret)
+			net.JoinHostPort(host, port), uiUrlPath, host, port, coreConfig.Secret)
 		// 官方面板地址
 		coreConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/#/setup?http=true&hostname=%s&port=%s&secret=%s",
-			controller[0], controller[1], coreConfig.Secret)
+			host, port, coreConfig.Secret)
 		// Yet Another Clash Dashboard
 		coreConfig.YACDUiAddr = fmt.Sprintf("https://yacd.metacubex.one/?hostname=%s&port=%s&secret=%s",
-			controller[0], controller[1], coreConfig.Secret)
+			host, port, coreConfig.Secret)
 	}
 
 	var out []byte
