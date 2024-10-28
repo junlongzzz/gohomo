@@ -27,7 +27,8 @@ type CoreConfig struct {
 	OfficialUiAddr string // 官方ui地址
 	YACDUiAddr     string // Yet Another Clash Dashboard ui地址
 	HttpProxyPort  int    // http代理端口
-	RunConfigPath  string // 运行配置文件路径
+	ConfigPath     string // 配置文件路径
+	RunConfigPath  string // 实际运行配置文件路径
 }
 
 var (
@@ -38,7 +39,6 @@ var (
 	coreConfig = &CoreConfig{
 		// 配置文件中不存在时需要赋予默认值的选项
 		ExternalController: "127.0.0.1:9090",
-		Secret:             "123456", // not secure!
 		ExternalUi:         "ui",
 	}
 
@@ -47,12 +47,13 @@ var (
 
 // 加载配置文件
 func loadCoreConfig() error {
-	configPath := filepath.Join(coreDir, "config.yaml")
-	if !isFileExist(configPath) {
-		return fmt.Errorf("config file not found: %s", configPath)
+	if coreConfig.ConfigPath == "" {
+		coreConfig.ConfigPath = filepath.Join(coreDir, "config.yaml")
 	}
-
-	configBytes, err := os.ReadFile(configPath)
+	if !isFileExist(coreConfig.ConfigPath) {
+		return fmt.Errorf("config file not found: %s", coreConfig.ConfigPath)
+	}
+	configBytes, err := os.ReadFile(coreConfig.ConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %v", err)
 	}
@@ -83,9 +84,6 @@ func loadCoreConfig() error {
 
 	if configMap["secret"] != nil && configMap["secret"] != "" {
 		coreConfig.Secret = configMap["secret"].(string)
-	} else {
-		// 赋默认值
-		configMap["secret"] = coreConfig.Secret
 	}
 
 	if configMap["external-ui"] != nil && configMap["external-ui"] != "" {
@@ -95,7 +93,7 @@ func loadCoreConfig() error {
 		configMap["external-ui"] = coreConfig.ExternalUi
 	}
 
-	if configMap["external-ui-name"] != nil {
+	if configMap["external-ui-name"] != nil && configMap["external-ui-name"] != "" {
 		coreConfig.ExternalUiName = configMap["external-ui-name"].(string)
 	}
 

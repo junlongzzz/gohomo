@@ -147,6 +147,11 @@ func onReady() {
 		}
 	})
 
+	systray.AddMenuItem("Edit Config", "Edit Config").Click(func() {
+		// 打开配置文件
+		_ = openBrowser(coreConfig.ConfigPath)
+	})
+
 	dashboardItem := systray.AddMenuItem("Core Dashboard", "Core Dashboard")
 	dashboardItem.AddSubMenuItem("External UI", "External UI").Click(func() {
 		_ = openBrowser(coreConfig.ExternalUiAddr)

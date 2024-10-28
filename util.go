@@ -140,19 +140,22 @@ func isFileExist(path string) bool {
 	return true
 }
 
-// 浏览器打开指定地址
-func openBrowser(url string) error {
+// 使用默认程序打开指定地址/文件/文件夹/程序等
+func openBrowser(uri string) error {
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		// 处理 uri 特殊字符
+		uri = strings.ReplaceAll(uri, "&", "^&")
+		cmd = exec.Command("cmd", "/c", "start", "", uri)
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	case "darwin":
-		cmd = exec.Command("open", url)
+		cmd = exec.Command("open", uri)
 	case "linux":
-		cmd = exec.Command("xdg-open", url)
+		cmd = exec.Command("xdg-open", uri)
 	default:
-		return &os.PathError{Op: "open", Path: url, Err: os.ErrNotExist}
+		return fmt.Errorf("unsupported platform")
 	}
 
 	return cmd.Start()
