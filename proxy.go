@@ -2,87 +2,85 @@ package main
 
 import (
 	"log"
-
-	"golang.org/x/sys/windows/registry"
+	"regexp"
 )
 
 const (
-	RegKeyPath    = `Software\Microsoft\Windows\CurrentVersion\Internet Settings`
+	RegKeyPath    = `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
 	DefaultBypass = "localhost;127.*;192.168.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;<local>"
 )
 
-// 打开注册表项
-func openRegistryKey(access uint32) (registry.Key, error) {
-	key, err := registry.OpenKey(registry.CURRENT_USER, RegKeyPath, access)
-	if err != nil {
-		log.Println("Error opening registry key:", err)
-	}
-	return key, err
-}
+var (
+	patternEnable = regexp.MustCompile(`(?i)ProxyEnable\s+[A-Za-z_]+\s+0x(\d+)`)
+	patternServer = regexp.MustCompile(`(?i)ProxyServer\s+[A-Za-z_]+\s+(\S+)`)
+	patternBypass = regexp.MustCompile(`(?i)ProxyOverride\s+[A-Za-z_]+\s+(\S+)`)
+)
 
-// 获取是否开启了代理
+// 获取代理开启状态
 func getProxyEnable() bool {
-	key, err := openRegistryKey(registry.QUERY_VALUE)
+	cmd := execCommand("reg", "query", RegKeyPath, "/v", "ProxyEnable")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return false
 	}
-	defer key.Close()
-	value, _, err := key.GetIntegerValue("ProxyEnable")
-	if err != nil {
-		return false
+
+	match := patternEnable.FindStringSubmatch(string(output))
+	if len(match) > 1 {
+		return match[1] == "1"
 	}
-	return value == 1
+
+	return false
 }
 
 // 获取代理服务器地址
 func getProxyServer() string {
-	key, err := openRegistryKey(registry.QUERY_VALUE)
+	cmd := execCommand("reg", "query", RegKeyPath, "/v", "ProxyServer")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""
 	}
-	defer key.Close()
-	value, _, err := key.GetStringValue("ProxyServer")
-	if err != nil {
-		return ""
+
+	match := patternServer.FindStringSubmatch(string(output))
+	if len(match) > 1 {
+		return match[1]
 	}
-	return value
+
+	return ""
 }
 
 // 获取代理白名单
 func getProxyBypass() string {
-	key, err := openRegistryKey(registry.QUERY_VALUE)
+	cmd := execCommand("reg", "query", RegKeyPath, "/v", "ProxyOverride")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""
 	}
-	defer key.Close()
-	value, _, err := key.GetStringValue("ProxyOverride")
-	if err != nil {
-		return ""
+
+	match := patternBypass.FindStringSubmatch(string(output))
+	if len(match) > 1 {
+		return match[1]
 	}
-	return value
+
+	return ""
 }
 
 // 设置代理
 func setProxy(enable bool, server string, bypass string) bool {
-	key, err := openRegistryKey(registry.SET_VALUE)
-	if err != nil {
-		return false
-	}
-	defer key.Close()
-
 	// Set ProxyEnable
-	enableValue := 0
+	enableValue := "0"
 	if enable {
-		enableValue = 1
+		enableValue = "1"
 	}
-	if err = key.SetDWordValue("ProxyEnable", uint32(enableValue)); err != nil {
+	cmdEnable := execCommand("reg", "add", RegKeyPath, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", enableValue, "/f")
+	if err := cmdEnable.Run(); err != nil {
 		log.Println("Error setting ProxyEnable:", err)
 		return false
 	}
 
 	// Set ProxyServer
 	if server != "" {
-		if err = key.SetStringValue("ProxyServer", server); err != nil {
+		cmdServer := execCommand("reg", "add", RegKeyPath, "/v", "ProxyServer", "/t", "REG_SZ", "/d", server, "/f")
+		if err := cmdServer.Run(); err != nil {
 			log.Println("Error setting ProxyServer:", err)
 			return false
 		}
@@ -90,7 +88,8 @@ func setProxy(enable bool, server string, bypass string) bool {
 
 	// Set ProxyOverride (Bypass list)
 	if bypass != "" {
-		if err = key.SetStringValue("ProxyOverride", bypass); err != nil {
+		cmdBypass := execCommand("reg", "add", RegKeyPath, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", bypass, "/f")
+		if err := cmdBypass.Run(); err != nil {
 			log.Println("Error setting ProxyOverride:", err)
 			return false
 		}
