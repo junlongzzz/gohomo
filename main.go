@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -149,7 +150,7 @@ func onReady() {
 
 	systray.AddMenuItem("Edit Config", "Edit Config").Click(func() {
 		// 打开配置文件
-		_ = openBrowser(coreConfig.ConfigPath)
+		_ = openBrowser(coreConfigPath)
 	})
 
 	dashboardItem := systray.AddMenuItem("Core Dashboard", "Core Dashboard")
@@ -207,16 +208,18 @@ func onReady() {
 	systray.AddSeparator()
 
 	systray.AddMenuItem("About", "About").Click(func() {
-		about := fmt.Sprintf("Name: %s\n"+
-			"Description: %s\n"+
-			"Build Hash: %s\n"+
-			"---\n"+
-			"Work Directory: %s\n"+
-			"Log Directory: %s\n"+
-			"Core Directory: %s\n"+
-			"Core Path: %s\n"+
-			"Core Version: %s",
-			AppName, "Wrapper for Mihomo written in Golang.", build, workDir, logDir, coreDir, corePath, getCoreVersion())
+		about := fmt.Sprintf(`Name: %s
+Description: %s
+Build Hash: %s
+Go Version: %s
+---
+Work Directory: %s
+Log Directory: %s
+Core Directory: %s
+Core Path: %s
+Core Version: %s
+Config Path: %s`,
+			AppName, "Wrapper for Mihomo written in Golang.", build, runtime.Version(), workDir, logDir, coreDir, corePath, getCoreVersion(), coreConfigPath)
 		messageBoxAlert(AppName, about)
 	})
 

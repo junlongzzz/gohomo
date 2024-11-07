@@ -27,14 +27,14 @@ type CoreConfig struct {
 	OfficialUiAddr string // 官方ui地址
 	YACDUiAddr     string // Yet Another Clash Dashboard ui地址
 	HttpProxyPort  int    // http代理端口
-	ConfigPath     string // 配置文件路径
-	RunConfigPath  string // 实际运行配置文件路径
 }
 
 var (
-	coreDir  string
-	coreName string
-	corePath string
+	coreDir           string // core工作目录
+	coreName          string // core程序名称
+	corePath          string // core程序路径
+	coreConfigPath    string // core配置文件路径
+	coreRunConfigPath string // core实际运行配置文件路径
 
 	coreConfig = &CoreConfig{
 		// 配置文件中不存在时需要赋予默认值的选项
@@ -47,13 +47,13 @@ var (
 
 // 加载配置文件
 func loadCoreConfig() error {
-	if coreConfig.ConfigPath == "" {
-		coreConfig.ConfigPath = filepath.Join(coreDir, "config.yaml")
+	if coreConfigPath == "" {
+		coreConfigPath = filepath.Join(coreDir, "config.yaml")
 	}
-	if !isFileExist(coreConfig.ConfigPath) {
-		return fmt.Errorf("config file not found: %s", coreConfig.ConfigPath)
+	if !isFileExist(coreConfigPath) {
+		return fmt.Errorf("config file not found: %s", coreConfigPath)
 	}
-	configBytes, err := os.ReadFile(coreConfig.ConfigPath)
+	configBytes, err := os.ReadFile(coreConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %v", err)
 	}
@@ -126,14 +126,15 @@ func loadCoreConfig() error {
 	if out, err = yaml.Marshal(&configMap); err != nil {
 		return fmt.Errorf("failed to marshal config file: %v", err)
 	}
-	if coreConfig.RunConfigPath == "" {
-		coreConfig.RunConfigPath = filepath.Join(coreDir, "config.auto-gen")
+	if coreRunConfigPath == "" {
+		coreRunConfigPath = filepath.Join(coreDir, "config.auto-gen")
 	}
 	// 保存到运行配置文件
-	if err = os.WriteFile(coreConfig.RunConfigPath, out, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %v", err)
+	if err = os.WriteFile(coreRunConfigPath, out, 0644); err != nil {
+		return fmt.Errorf("failed to write run config file: %v", err)
 	}
 
+	log.Println("Core config loaded:", coreConfigPath)
 	return nil
 }
 
@@ -148,7 +149,7 @@ func startCore() bool {
 	}
 
 	// 启动core程序
-	cmd := execCommand(corePath, "-d", coreDir, "-f", coreConfig.RunConfigPath)
+	cmd := execCommand(corePath, "-d", coreDir, "-f", coreRunConfigPath)
 	// 重定向输出到log
 	cmd.Stdout = log.Writer()
 	cmd.Stderr = log.Writer()
