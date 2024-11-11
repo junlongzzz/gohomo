@@ -29,6 +29,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          check-latest: true
 
       - name: Get short commit SHA
         id: commit-sha
@@ -43,11 +44,14 @@ jobs:
         run: |
           mkdir -p bin
           go version
-          go build -ldflags="$LDFLAGS" -trimpath -o bin/gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_SHA_SHORT }}.exe .
+          go build -ldflags="${{ env.LDFLAGS }}" -trimpath -o bin/gohomo.exe .
+          zip -r bin/gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_SHA_SHORT }}.zip bin/
           echo "${{ env.COMMIT_SHA_SHORT }}" > bin/version.txt
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: bin/*
+          files: |
+            bin/*.zip
+            bin/version.txt
           make_latest: true
