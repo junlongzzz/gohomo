@@ -1,0 +1,53 @@
+name: Build and release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [ windows ]
+        goarch: [ amd64, arm64 ]
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Get short commit SHA
+        id: commit-sha
+        run: echo "COMMIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+          LDFLAGS: '-s -w -X main.build=${{ env.COMMIT_SHA_SHORT }} -H=windowsgui'
+        run: |
+          mkdir -p bin
+          go version
+          go build -ldflags="$LDFLAGS" -trimpath -o bin/gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_SHA_SHORT }}.exe .
+          echo "${{ env.COMMIT_SHA_SHORT }}" > bin/version.txt
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/*
+          make_latest: true
