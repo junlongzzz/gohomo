@@ -45,7 +45,9 @@ jobs:
           mkdir -p bin
           go version
           go build -ldflags="${{ env.LDFLAGS }}" -trimpath -o bin/gohomo.exe .
-          zip -r bin/gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_SHA_SHORT }}.zip bin/*
+          cd bin
+          zip -r gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_SHA_SHORT }}.zip *
+          cd ..
           echo "${{ env.COMMIT_SHA_SHORT }}" > bin/version.txt
 
       - name: Upload release assets
@@ -54,4 +56,6 @@ jobs:
           files: |
             bin/*.zip
             bin/version.txt
+          draft: false
+          prerelease: false
           make_latest: true
