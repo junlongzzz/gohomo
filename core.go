@@ -112,10 +112,10 @@ func loadCoreConfig() error {
 			host = "127.0.0.1"
 		}
 		// 本地面板地址
-		coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/#/setup?hostname=%s&port=%s&secret=%s",
+		coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/?hostname=%s&port=%s&secret=%s",
 			net.JoinHostPort(host, port), uiUrlPath, host, port, coreConfig.Secret)
 		// 官方面板地址
-		coreConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/#/setup?http=true&hostname=%s&port=%s&secret=%s",
+		coreConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/?http=true&hostname=%s&port=%s&secret=%s",
 			host, port, coreConfig.Secret)
 		// Yet Another Clash Dashboard
 		coreConfig.YACDUiAddr = fmt.Sprintf("https://yacd.metacubex.one/?hostname=%s&port=%s&secret=%s",
