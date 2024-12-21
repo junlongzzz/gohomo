@@ -199,7 +199,18 @@ func isCoreRunning() bool {
 
 // 设置系统代理为core配置的代理
 func setCoreProxy() bool {
-	return setProxyWithDefaultBypass(true, fmt.Sprintf("127.0.0.1:%d", coreConfig.HttpProxyPort))
+	set := setProxyWithDefaultBypass(true, fmt.Sprintf("127.0.0.1:%d", coreConfig.HttpProxyPort))
+	if set {
+		proxyUrl := fmt.Sprintf("http://127.0.0.1:%d", coreConfig.HttpProxyPort)
+		// 设置环境变量
+		_ = os.Setenv("HTTP_PROXY", proxyUrl)
+		_ = os.Setenv("HTTPS_PROXY", proxyUrl)
+	} else {
+		// 恢复环境变量
+		_ = os.Unsetenv("HTTP_PROXY")
+		_ = os.Unsetenv("HTTPS_PROXY")
+	}
+	return set
 }
 
 // 获取core版本号

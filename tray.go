@@ -135,7 +135,7 @@ func onReady() {
 
 	systray.AddMenuItem("Check Update", "Check Update").Click(func() {
 		go func() {
-			resp, err := http.Get(fmt.Sprintf("https://ghp.ci/%s/releases/latest/download/version.txt", AppGitHubRepo))
+			resp, err := http.Get(fmt.Sprintf("%s/releases/latest/download/version.txt", AppGitHubRepo))
 			if err != nil {
 				messageBoxAlert(AppName, fmt.Sprintf("Failed to check update: %v", err))
 				return
