@@ -1,10 +1,10 @@
-module gohomo
+module github.com/junlongzzz/gohomo
 
-go 1.23
+go 1.24
 
 require (
 	github.com/energye/systray v1.0.2
-	golang.org/x/sys v0.28.0
+	golang.org/x/sys v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
