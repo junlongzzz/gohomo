@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/go-toast/toast"
 	"golang.org/x/sys/windows"
 )
 
@@ -228,4 +229,15 @@ func execCommand(name string, arg ...string) *exec.Cmd {
 		HideWindow: true,
 	}
 	return cmd
+}
+
+// 发送通知
+func sendNotification(message string) {
+	notification := toast.Notification{
+		AppID:   AppName,
+		Message: message,
+	}
+	if err := notification.Push(); err != nil {
+		log.Printf("Failed to send notification: %v", err)
+	}
 }

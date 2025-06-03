@@ -47,11 +47,21 @@ var (
 
 // 加载配置文件
 func loadCoreConfig() error {
-	if coreConfigPath == "" {
-		coreConfigPath = filepath.Join(coreDir, "config.yaml")
+	// 配置文件搜索路径
+	var configSearchPaths = []string{
+		filepath.Join(workDir, "config.yaml"),
+		filepath.Join(workDir, "config.yml"),
+		filepath.Join(coreDir, "config.yaml"),
+		filepath.Join(coreDir, "config.yml"),
+	}
+	for _, path := range configSearchPaths {
+		if isFileExist(path) {
+			coreConfigPath = path
+			break
+		}
 	}
 	if !isFileExist(coreConfigPath) {
-		return fmt.Errorf("config file not found: %s", coreConfigPath)
+		return fmt.Errorf("config file not found, please put config.yaml in %s or %s", workDir, coreDir)
 	}
 	configBytes, err := os.ReadFile(coreConfigPath)
 	if err != nil {

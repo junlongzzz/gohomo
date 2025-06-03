@@ -22,6 +22,8 @@ func initSystray() {
 }
 
 func onReady() {
+	sendNotification("Gohomo is running...")
+
 	bytes, err := staticFiles.ReadFile("static/icon.ico")
 	if err == nil {
 		systray.SetIcon(bytes)
@@ -64,6 +66,7 @@ func onReady() {
 			return
 		}
 		if restartCore() {
+			sendNotification("Core restarted")
 			if sysProxyItem != nil && sysProxyItem.Checked() {
 				// 重新设置代理
 				setCoreProxy()
