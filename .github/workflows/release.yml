@@ -31,24 +31,26 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
-      - name: Get short commit SHA
-        id: commit-sha
-        run: echo "COMMIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      - name: Get commit info
+        id: commit-info
+        run: |
+          echo "COMMIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "COMMIT_TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
 
       - name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
-          LDFLAGS: '-s -w -X main.build=${{ env.COMMIT_SHA_SHORT }} -H=windowsgui'
+          LDFLAGS: '-s -w -X main.build=${{ env.COMMIT_SHA_SHORT }} -X main.version=${{ env.COMMIT_TAG }} -H=windowsgui'
         run: |
           mkdir -p bin
           go version
           go build -ldflags="${{ env.LDFLAGS }}" -trimpath -o bin/gohomo.exe .
           cd bin
-          zip -r gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_SHA_SHORT }}.zip *
+          zip -r gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_TAG }}.zip *
           cd ..
-          echo -n "${{ env.COMMIT_SHA_SHORT }}" > bin/version.txt
+          echo -n "${{ env.COMMIT_TAG }}" > bin/version.txt
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2

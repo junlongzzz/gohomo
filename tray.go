@@ -31,7 +31,7 @@ func onReady() {
 	systray.SetTitle(AppName)
 	systray.SetTooltip(AppName)
 
-	systray.AddMenuItem(fmt.Sprintf("%s %s", AppName, build), AppName).Click(func() {
+	systray.AddMenuItem(fmt.Sprintf("%s %s", AppName, version), AppName).Click(func() {
 		// 点击打开主页
 		_ = openBrowser(AppGitHubRepo)
 	})
@@ -151,7 +151,7 @@ func onReady() {
 				return
 			}
 			latestVersion := string(body)
-			if latestVersion != "" && latestVersion != build {
+			if latestVersion != "" && latestVersion != version {
 				if messageBoxConfirm(AppName, fmt.Sprintf("New version available: %s\nDo you want to download it?", latestVersion)) {
 					_ = openBrowser(fmt.Sprintf("%s/releases/latest", AppGitHubRepo))
 				}
@@ -164,6 +164,7 @@ func onReady() {
 	systray.AddMenuItem("About", "About").Click(func() {
 		about := fmt.Sprintf(`Name: %s
 Description: %s
+Version: %s
 Build Hash: %s
 Go Version: %s
 ---
@@ -173,7 +174,7 @@ Core Directory: %s
 Core Path: %s
 Core Version: %s
 Config Path: %s`,
-			AppName, "Wrapper for Mihomo written in Golang.", build, runtime.Version(), workDir, logDir, coreDir, corePath, getCoreVersion(), coreConfigPath)
+			AppName, "Wrapper for Mihomo written in Golang.", version, build, runtime.Version(), workDir, logDir, coreDir, corePath, getCoreVersion(), coreConfigPath)
 		messageBoxAlert(AppName, about)
 	})
 

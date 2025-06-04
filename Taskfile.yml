@@ -6,5 +6,7 @@ tasks:
     vars:
       GIT_COMMIT:
         sh: git rev-parse --short HEAD
+      GIT_TAG:
+        sh: git describe --tags --abbrev=0
     cmds:
-      - go build -ldflags="-s -w -X main.build={{.GIT_COMMIT}} -H=windowsgui" -trimpath .
+      - go build -ldflags="-s -w -X main.build={{.GIT_COMMIT}} -X main.version={{.GIT_TAG}} -H=windowsgui" -trimpath .

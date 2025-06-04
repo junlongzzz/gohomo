@@ -22,6 +22,7 @@ const (
 
 var (
 	build   string // 编译时的git提交哈希
+	version string // 程序版本
 	workDir string // 工作目录
 	logDir  string // 日志目录
 )
@@ -79,7 +80,7 @@ func main() {
 		}
 	}()
 
-	log.Println("Build hash:", build)
+	log.Println(fmt.Sprintf("Version: %s (%s)", version, build))
 	log.Println("Work directory:", workDir)
 
 	// 查找工作目录下是否存在文件名以 mihomo 开头，以 .exe 结尾的文件
