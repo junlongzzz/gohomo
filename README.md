@@ -1,6 +1,8 @@
 # Gohomo
 
-**Wrapper for [Mihomo](https://github.com/MetaCubeX/mihomo) written in Golang, only support Windows now.**
+![logo](./logo.png)
+
+**Wrapper for [Mihomo](https://github.com/MetaCubeX/mihomo) written in [Golang](https://go.dev), only support Windows now.**
 
 ## Usage
 
