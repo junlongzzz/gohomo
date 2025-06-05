@@ -238,6 +238,6 @@ func sendNotification(message string) {
 		Message: message,
 	}
 	if err := notification.Push(); err != nil {
-		log.Printf("Failed to send notification: %v", err)
+		log.Printf("Failed to send notification: %v\n", err)
 	}
 }

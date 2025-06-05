@@ -36,17 +36,15 @@ var (
 	coreConfigPath    string // core配置文件路径
 	coreRunConfigPath string // core实际运行配置文件路径
 
-	coreConfig = &CoreConfig{
-		// 配置文件中不存在时需要赋予默认值的选项
-		ExternalController: "127.0.0.1:9090",
-		ExternalUi:         "ui",
-	}
+	coreConfig *CoreConfig // core配置信息
 
 	mutex sync.Mutex // 互斥锁
 )
 
 // 加载配置文件
 func loadCoreConfig() error {
+	coreConfig = &CoreConfig{}
+
 	// 配置文件搜索路径
 	var configSearchPaths = []string{
 		filepath.Join(workDir, "config.yaml"),
@@ -87,9 +85,6 @@ func loadCoreConfig() error {
 
 	if configMap["external-controller"] != nil && configMap["external-controller"] != "" {
 		coreConfig.ExternalController = configMap["external-controller"].(string)
-	} else {
-		// 赋默认值
-		configMap["external-controller"] = coreConfig.ExternalController
 	}
 
 	if configMap["secret"] != nil && configMap["secret"] != "" {
@@ -98,9 +93,6 @@ func loadCoreConfig() error {
 
 	if configMap["external-ui"] != nil && configMap["external-ui"] != "" {
 		coreConfig.ExternalUi = configMap["external-ui"].(string)
-	} else {
-		// 赋默认值
-		configMap["external-ui"] = coreConfig.ExternalUi
 	}
 
 	if configMap["external-ui-name"] != nil && configMap["external-ui-name"] != "" {
@@ -111,7 +103,8 @@ func loadCoreConfig() error {
 		return fmt.Errorf("http proxy port not set")
 	}
 
-	if host, port, err := net.SplitHostPort(coreConfig.ExternalController); err == nil {
+	if host, port, err := net.SplitHostPort(coreConfig.ExternalController); err == nil && coreConfig.ExternalUi != "" {
+		// 需要配置了外部控制器API和外部用户UI时才能使用控制面板
 		uiUrlPath := "/ui"
 		if coreConfig.ExternalUiName != "" {
 			// 去除开头/末尾的斜杠
@@ -122,10 +115,10 @@ func loadCoreConfig() error {
 			host = "127.0.0.1"
 		}
 		// 本地面板地址
-		coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/?hostname=%s&port=%s&secret=%s",
+		coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/#/setup?http=true&hostname=%s&port=%s&secret=%s",
 			net.JoinHostPort(host, port), uiUrlPath, host, port, coreConfig.Secret)
 		// 官方面板地址
-		coreConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/?http=true&hostname=%s&port=%s&secret=%s",
+		coreConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/#/setup?http=true&hostname=%s&port=%s&secret=%s",
 			host, port, coreConfig.Secret)
 		// Yet Another Clash Dashboard
 		coreConfig.YACDUiAddr = fmt.Sprintf("https://yacd.metacubex.one/?hostname=%s&port=%s&secret=%s",

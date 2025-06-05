@@ -186,6 +186,12 @@ Config Path: %s`,
 		if menu != nil {
 			go func() {
 				coreItem.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
+				// 判断是否展示外部控制面板菜单项
+				if coreConfig.ExternalUiAddr == "" {
+					dashboardItem.Hide()
+				} else {
+					dashboardItem.Show()
+				}
 			}()
 			_ = menu.ShowMenu()
 		}
