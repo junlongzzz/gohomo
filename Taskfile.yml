@@ -1,6 +1,13 @@
 version: '3'
 tasks:
+  winres:
+    platforms:
+      - windows
+    desc: Generate windows build resource
+    # go install github.com/tc-hib/go-winres@latest
+    cmd: go-winres make --arch amd64,arm64
   build:
+    desc: Build executable files
     env:
       CGO_ENABLED: 0
     vars:

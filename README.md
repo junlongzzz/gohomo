@@ -9,4 +9,5 @@
 1. Download the latest release from [GitHub Releases](https://github.com/junlongzzz/gohomo/releases/latest).
 2. Put [Mihomo](https://github.com/MetaCubeX/mihomo/releases) executable binary and `config.yaml` (.yml also supported)
    into the same directory as `gohomo.exe`.
-3. Run `gohomo.exe` and enjoy!
+3. Run `gohomo.exe` and you will see it in the system tray.
+4. Enjoy!
