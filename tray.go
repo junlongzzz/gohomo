@@ -91,6 +91,9 @@ func onReady() {
 	dashboardItem.AddSubMenuItem("YACD UI", "YACD UI").Click(func() {
 		_ = openBrowser(coreConfig.YACDUiAddr)
 	})
+	dashboardItem.AddSubMenuItem("zashboard UI", "zashboard UI").Click(func() {
+		_ = openBrowser(coreConfig.ZashBoardUiAddr)
+	})
 
 	// 分割线
 	systray.AddSeparator()

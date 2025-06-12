@@ -23,10 +23,11 @@ type CoreConfig struct {
 	ExternalUiName     string
 
 	// 额外自定义字段，不在yaml配置文件中
-	ExternalUiAddr string // 外部ui地址
-	OfficialUiAddr string // 官方ui地址
-	YACDUiAddr     string // Yet Another Clash Dashboard ui地址
-	HttpProxyPort  int    // http代理端口
+	ExternalUiAddr  string // 外部ui地址
+	OfficialUiAddr  string // 官方ui地址
+	YACDUiAddr      string // Yet Another Clash Dashboard ui地址
+	ZashBoardUiAddr string // zashboard ui地址
+	HttpProxyPort   int    // http代理端口
 }
 
 var (
@@ -122,6 +123,9 @@ func loadCoreConfig() error {
 			host, port, coreConfig.Secret)
 		// Yet Another Clash Dashboard
 		coreConfig.YACDUiAddr = fmt.Sprintf("https://yacd.metacubex.one/?hostname=%s&port=%s&secret=%s",
+			host, port, coreConfig.Secret)
+		// zashboard
+		coreConfig.ZashBoardUiAddr = fmt.Sprintf("https://board.zash.run.place/#/setup?http=true&hostname=%s&port=%s&secret=%s",
 			host, port, coreConfig.Secret)
 	}
 
