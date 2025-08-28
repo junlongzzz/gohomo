@@ -1,11 +1,11 @@
 module github.com/junlongzzz/gohomo
 
-go 1.24
+go 1.25
 
 require (
 	github.com/energye/systray v1.0.2
 	github.com/go-toast/toast v0.0.0-20190211030409-01e6764cf0a4
-	golang.org/x/sys v0.33.0
+	golang.org/x/sys v0.35.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
