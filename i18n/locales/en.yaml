@@ -1,0 +1,46 @@
+# 消息
+msg:
+  # 错误消息
+  error:
+    already_running: "Another instance of Gohomo is running."
+    write_pid_file: "Failed to write pid file: {{.Error}}"
+    core_restart: "Failed to restart core"
+    core_start: "Failed to start core: {{.CorePath}}"
+    core_not_found: "No core found, please put it in: {{.Dir}}"
+  # 提示消息
+  info:
+    no_update: "You are using the latest version."
+    update_available: "New version available: {{.Version}}\nDo you want to download it?"
+    about: |-
+      Name: {{.Name}}
+      Description: {{.Description}}
+      Version: {{.Version}}
+      Build Hash: {{.BuildHash}}
+      Build Go Version: {{.GoVersion}}
+      ---
+      Work Directory: {{.WorkDir}}
+      Log Directory: {{.LogDir}}
+      Config Path: {{.ConfigPath}}
+      Core Directory: {{.CoreDir}}
+      Core Path: {{.CorePath}}
+      Core Version: {{.CoreVersion}}
+# 托盘
+tray:
+  start_message: "Gohomo is running in the tray..."
+  system_proxy: "System Proxy"
+  restart_core: "Restart Core"
+  edit_config: "Edit Config"
+  core_dashboard:
+    title: "Core Dashboard"
+    options:
+      local_ui: "Local UI"
+      official_ui: "Official UI"
+  open:
+    title: "Open"
+    options:
+      work_dir: "Work Directory"
+      powershell: "PowerShell"
+      cmd: "Command Prompt"
+  check_update: "Check Update"
+  about: "About"
+  exit: "Exit"

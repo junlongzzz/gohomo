@@ -22,7 +22,7 @@ func initSystray() {
 }
 
 func onReady() {
-	sendNotification("Gohomo is running...")
+	sendNotification(I.TranSys("tray.start_message", nil))
 
 	bytes, err := staticFiles.ReadFile("static/icon.ico")
 	if err == nil {
@@ -45,7 +45,7 @@ func onReady() {
 		_ = openBrowser("https://github.com/MetaCubeX/mihomo")
 	})
 
-	sysProxyItem := systray.AddMenuItemCheckbox("System Proxy", "Set or Unset", getProxyEnable())
+	sysProxyItem := systray.AddMenuItemCheckbox(I.TranSys("tray.system_proxy", nil), "", getProxyEnable())
 	sysProxyItem.Click(func() {
 		if sysProxyItem.Checked() {
 			if unsetProxy() {
@@ -58,7 +58,7 @@ func onReady() {
 		}
 	})
 
-	restartCoreItem := systray.AddMenuItem("Restart Core", "Restart Core")
+	restartCoreItem := systray.AddMenuItem(I.TranSys("tray.restart_core", nil), "")
 	restartCoreItem.Click(func() {
 		// 重新加载核心配置
 		if err := loadCoreConfig(); err != nil {
@@ -66,41 +66,41 @@ func onReady() {
 			return
 		}
 		if restartCore() {
-			sendNotification("Core restarted")
+			//sendNotification("Core restarted")
 			if sysProxyItem != nil && sysProxyItem.Checked() {
 				// 重新设置代理
 				setCoreProxy()
 			}
 		} else {
-			messageBoxAlert(AppName, "Failed to restart core")
+			messageBoxAlert(AppName, I.TranSys("msg.error.core_restart", nil))
 		}
 	})
 
-	systray.AddMenuItem("Edit Config", "Edit Config").Click(func() {
+	systray.AddMenuItem(I.TranSys("tray.edit_config", nil), "").Click(func() {
 		// 打开配置文件
 		_ = openBrowser(coreConfigPath)
 	})
 
-	dashboardItem := systray.AddMenuItem("Core Dashboard", "Core Dashboard")
-	dashboardItem.AddSubMenuItem("External UI", "External UI").Click(func() {
+	dashboardItem := systray.AddMenuItem(I.TranSys("tray.core_dashboard.title", nil), "")
+	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.local_ui", nil), "").Click(func() {
 		_ = openBrowser(coreConfig.ExternalUiAddr)
 	})
-	dashboardItem.AddSubMenuItem("Official UI", "Official UI").Click(func() {
+	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.official_ui", nil), "").Click(func() {
 		_ = openBrowser(coreConfig.OfficialUiAddr)
 	})
-	dashboardItem.AddSubMenuItem("YACD UI", "YACD UI").Click(func() {
+	dashboardItem.AddSubMenuItem("YACD UI", "").Click(func() {
 		_ = openBrowser(coreConfig.YACDUiAddr)
 	})
-	dashboardItem.AddSubMenuItem("zashboard UI", "zashboard UI").Click(func() {
+	dashboardItem.AddSubMenuItem("zashboard UI", "").Click(func() {
 		_ = openBrowser(coreConfig.ZashBoardUiAddr)
 	})
 
 	// 分割线
 	systray.AddSeparator()
 
-	openItem := systray.AddMenuItem("Open", "Open")
+	openItem := systray.AddMenuItem(I.TranSys("tray.open.title", nil), "")
 	// 打开本地工作目录
-	openItem.AddSubMenuItem("Work Directory", "Open Work Directory").Click(func() {
+	openItem.AddSubMenuItem(I.TranSys("tray.open.options.work_dir", nil), "").Click(func() {
 		_ = openDirectory(workDir)
 	})
 
@@ -122,7 +122,7 @@ func onReady() {
 		}
 	}
 	// 打开powershell
-	openItem.AddSubMenuItem("PowerShell", "Open PowerShell").Click(func() {
+	openItem.AddSubMenuItem(I.TranSys("tray.open.options.powershell", nil), "").Click(func() {
 		ps := "pwsh.exe"
 		// 先判断 pwsh.exe 是否在环境变量内存在
 		if _, err := exec.LookPath(ps); err != nil {
@@ -132,14 +132,14 @@ func onReady() {
 		openShellFn(ps)
 	})
 	// 打开命令行
-	openItem.AddSubMenuItem("Command Prompt", "Open Command Prompt").Click(func() {
+	openItem.AddSubMenuItem(I.TranSys("tray.open.options.cmd", nil), "").Click(func() {
 		openShellFn("cmd.exe")
 	})
 
 	// 分割线
 	systray.AddSeparator()
 
-	systray.AddMenuItem("Check Update", "Check Update").Click(func() {
+	systray.AddMenuItem(I.TranSys("tray.check_update", nil), "").Click(func() {
 		go func() {
 			resp, err := http.Get(fmt.Sprintf("%s/releases/latest/download/version.txt", AppGitHubRepo))
 			if err != nil {
@@ -155,33 +155,33 @@ func onReady() {
 			}
 			latestVersion := string(body)
 			if latestVersion != "" && latestVersion != version {
-				if messageBoxConfirm(AppName, fmt.Sprintf("New version available: %s\nDo you want to download it?", latestVersion)) {
+				if messageBoxConfirm(AppName, I.TranSys("msg.info.update_available", map[string]any{"Version": latestVersion})) {
 					_ = openBrowser(fmt.Sprintf("%s/releases/latest", AppGitHubRepo))
 				}
 			} else {
-				messageBoxAlert(AppName, "You are using the latest version.")
+				messageBoxAlert(AppName, I.TranSys("msg.info.no_update", nil))
 			}
 		}()
 	})
 
-	systray.AddMenuItem("About", "About").Click(func() {
-		about := fmt.Sprintf(`Name: %s
-Description: %s
-Version: %s
-Build Hash: %s
-Go Version: %s
----
-Work Directory: %s
-Log Directory: %s
-Core Directory: %s
-Core Path: %s
-Core Version: %s
-Config Path: %s`,
-			AppName, "Wrapper for Mihomo written in Golang.", version, build, runtime.Version(), workDir, logDir, coreDir, corePath, getCoreVersion(), coreConfigPath)
+	systray.AddMenuItem(I.TranSys("tray.about", nil), "").Click(func() {
+		about := I.TranSys("msg.info.about", map[string]any{
+			"Name":        AppName,
+			"Description": "Wrapper for Mihomo written in Golang.",
+			"Version":     version,
+			"BuildHash":   build,
+			"GoVersion":   runtime.Version(),
+			"WorkDir":     workDir,
+			"LogDir":      logDir,
+			"ConfigPath":  coreConfigPath,
+			"CoreDir":     coreDir,
+			"CorePath":    corePath,
+			"CoreVersion": getCoreVersion(),
+		})
 		messageBoxAlert(AppName, about)
 	})
 
-	exitItem := systray.AddMenuItem("Exit", "Exit")
+	exitItem := systray.AddMenuItem(I.TranSys("tray.exit", nil), "")
 	exitItem.Click(func() { systray.Quit() })
 
 	// 托盘点击事件处理函数

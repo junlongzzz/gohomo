@@ -1,0 +1,46 @@
+# 消息
+msg:
+  # 错误消息
+  error:
+    already_running: "另一个 Gohomo 实例正在运行。"
+    write_pid_file: "写入 PID 文件失败：{{.Error}}"
+    core_restart: "重启核心失败"
+    core_start: "启动核心失败：{{.CorePath}}"
+    core_not_found: "未找到核心文件，请将文件放至该目录内：{{.Dir}}"
+  # 提示消息
+  info:
+    no_update: "您使用的是最新版本。"
+    update_available: "新版本可用：{{.Version}}\n是否前往下载？"
+    about: |-
+      名称: {{.Name}}
+      描述: {{.Description}}
+      版本: {{.Version}}
+      编译哈希: {{.BuildHash}}
+      编译 Go 版本: {{.GoVersion}}
+      ---
+      工作目录: {{.WorkDir}}
+      日志目录: {{.LogDir}}
+      配置路径: {{.ConfigPath}}
+      核心目录: {{.CoreDir}}
+      核心路径: {{.CorePath}}
+      核心版本: {{.CoreVersion}}
+# 托盘
+tray:
+  start_message: "Gohomo 正运行在系统托盘内..."
+  system_proxy: "系统代理"
+  restart_core: "重启核心"
+  edit_config: "编辑配置"
+  core_dashboard:
+    title: "核心面板"
+    options:
+      local_ui: "本地 UI"
+      official_ui: "官方 UI"
+  open:
+    title: "打开"
+    options:
+      work_dir: "工作目录"
+      powershell: "PowerShell"
+      cmd: "命令提示符"
+  check_update: "检测更新"
+  about: "关于"
+  exit: "退出"

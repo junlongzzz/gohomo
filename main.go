@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/junlongzzz/gohomo/i18n"
 )
 
 const (
@@ -25,14 +27,22 @@ var (
 	version string // 程序版本
 	workDir string // 工作目录
 	logDir  string // 日志目录
+
+	I *i18n.I18n // i18n
 )
 
 func main() {
 	// 设置高DPI感知，避免界面模糊
 	setDPIAware()
+
+	// 初始化i18n
+	I = i18n.New()
+	if err := I.Init(); err != nil {
+		fatal("Failed to init i18n:", err)
+	}
+
 	// 检查是否为单实例
 	checkSingleInstance()
-
 	// 获取当前程序的执行所在目录
 	executable, err := os.Executable()
 	if err != nil {
@@ -44,8 +54,7 @@ func main() {
 
 	if !isFileExist(coreDir) {
 		// core目录不存在则自动创建
-		err := os.Mkdir(coreDir, 0755)
-		if err != nil {
+		if err := os.Mkdir(coreDir, 0755); err != nil {
 			fatal("Failed to create core directory:", err)
 		}
 	}
@@ -101,7 +110,7 @@ func main() {
 		return nil
 	})
 	if corePath == "" {
-		fatal("No core found, please put it in", workDir)
+		fatal(I.TranSys("msg.error.core_not_found", map[string]any{"Dir": workDir}))
 	} else {
 		// 获取core文件名
 		coreName = filepath.Base(corePath)
@@ -116,7 +125,7 @@ func main() {
 		// 设置系统代理
 		setCoreProxy()
 	} else {
-		fatal("Failed to start core:", corePath)
+		fatal(I.TranSys("msg.error.core_start", map[string]any{"CorePath": corePath}))
 	}
 
 	// 系统托盘
@@ -146,7 +155,7 @@ func checkSingleInstance() {
 			// 判断pid对应进程是否还在运行
 			pid, err := strconv.Atoi(string(bytes))
 			if err == nil && pid > 0 && isProcessRunningByPid(pid) {
-				fatal("Another instance of Gohomo is running.")
+				fatal(I.TranSys("msg.error.already_running", nil))
 			}
 		}
 	}
@@ -154,7 +163,9 @@ func checkSingleInstance() {
 	// 保存当前进程的pid到文件
 	err := os.WriteFile(pidFilePath, []byte(strconv.Itoa(os.Getpid())), 0644)
 	if err != nil {
-		fatal("Failed to write pid file:", err)
+		fatal(I.TranSys("msg.error.write_pid_file", map[string]any{
+			"Error": err,
+		}))
 	}
 }
 

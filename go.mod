@@ -5,7 +5,9 @@ go 1.25
 require (
 	github.com/energye/systray v1.0.2
 	github.com/go-toast/toast v0.0.0-20190211030409-01e6764cf0a4
-	golang.org/x/sys v0.35.0
+	github.com/nicksnyder/go-i18n/v2 v2.6.0
+	golang.org/x/sys v0.37.0
+	golang.org/x/text v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
