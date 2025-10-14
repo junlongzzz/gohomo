@@ -18,6 +18,9 @@ jobs:
         goos: [ windows ]
         goarch: [ amd64, arm64 ]
 
+    outputs:
+      COMMIT_TAG: ${{ steps.commit-info.outputs.COMMIT_TAG }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -31,8 +34,11 @@ jobs:
       - name: Get commit info
         id: commit-info
         run: |
-          echo "COMMIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "COMMIT_TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
+          COMMIT_SHA_SHORT=$(git rev-parse --short HEAD)
+          COMMIT_TAG=$(git describe --tags --abbrev=0)
+          echo "COMMIT_SHA_SHORT=$COMMIT_SHA_SHORT" >> $GITHUB_ENV
+          echo "COMMIT_TAG=$COMMIT_TAG" >> $GITHUB_ENV
+          echo "COMMIT_TAG=$COMMIT_TAG" >> $GITHUB_OUTPUT
 
       - name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
@@ -47,15 +53,12 @@ jobs:
           cd bin
           zip -r gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_TAG }}.zip *
           cd ..
-          echo -n "${{ env.COMMIT_TAG }}" > bin/version.txt
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: gohomo-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: |
-            bin/*.zip
-            bin/version.txt
+          path: bin/*.zip
 
   release:
     runs-on: ubuntu-latest
@@ -70,12 +73,15 @@ jobs:
         with:
           path: bin
 
+      - name: Generate version.txt
+        run: echo -n "${{ needs.build.outputs.COMMIT_TAG }}" > bin/version.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             bin/**/*.zip
-            bin/**/version.txt
+            bin/version.txt
           draft: false
           prerelease: false
           make_latest: true
