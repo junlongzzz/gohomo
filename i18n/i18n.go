@@ -44,7 +44,7 @@ func (i *I18n) Init() error {
 	// 默认语言
 	i.defaultLang = "en"
 	// 检测系统语言
-	i.systemLang = detectSystemLang(i.defaultLang)
+	i.systemLang = i.detectSystemLang(i.defaultLang)
 
 	i.bundle = i18n.NewBundle(language.Make(i.defaultLang))
 	i.bundle.RegisterUnmarshalFunc("yml", yaml.Unmarshal)
@@ -111,6 +111,7 @@ func (i *I18n) SetSystemLang(lang string) {
 	i.systemLang = lang
 }
 
+// getLocalizer 获取指定语言的Localizer
 func (i *I18n) getLocalizer(lang string) *i18n.Localizer {
 	// canonicalize: replace _ with - and lower-case primary
 	lang = strings.ReplaceAll(lang, "_", "-")
@@ -131,12 +132,12 @@ func (i *I18n) getLocalizer(lang string) *i18n.Localizer {
 }
 
 // detectSystemLang 支持 Linux/macOS（LANG 环境变量）与 Windows (PowerShell Get-Culture)
-func detectSystemLang(defaultLang string) string {
+func (i *I18n) detectSystemLang(defaultLang string) string {
 	// 1. check common env vars
 	envVars := []string{"LANG", "LC_ALL", "LC_MESSAGES"}
 	for _, v := range envVars {
 		if val := os.Getenv(v); val != "" {
-			if parsed := parseLangFromEnv(val); parsed != "" {
+			if parsed := i.parseLangFromEnv(val); parsed != "" {
 				return parsed
 			}
 		}
@@ -150,7 +151,7 @@ func detectSystemLang(defaultLang string) string {
 			HideWindow: true,
 		}
 		if out, err := cmd.Output(); err == nil {
-			if parsed := parseLangFromEnv(string(out)); parsed != "" {
+			if parsed := i.parseLangFromEnv(string(out)); parsed != "" {
 				return parsed
 			}
 		}
@@ -163,7 +164,7 @@ func detectSystemLang(defaultLang string) string {
 // "zh_CN.UTF-8" -> "zh"
 // "en-US" -> "en"
 // "zh-CN" -> "zh"
-func parseLangFromEnv(raw string) string {
+func (i *I18n) parseLangFromEnv(raw string) string {
 	r := strings.TrimSpace(raw)
 	r = strings.ToLower(r)
 	// remove encoding suffixes

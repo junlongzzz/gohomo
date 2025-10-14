@@ -4,9 +4,17 @@ msg:
   error:
     already_running: "另一个 Gohomo 实例正在运行。"
     write_pid_file: "写入 PID 文件失败：{{.Error}}"
-    core_restart: "重启核心失败"
-    core_start: "启动核心失败：{{.CorePath}}"
-    core_not_found: "未找到核心文件，请将文件放至该目录内：{{.Dir}}"
+    core:
+      start_failed: "启动核心失败"
+      restart_failed: "重启核心失败"
+      not_found: "未找到核心文件，请将文件放至该目录内：{{.Dir}}"
+      config:
+        not_found: "未找到配置文件，请将 config.yaml 放入 {{.Dir1}} 或 {{.Dir2}} 中"
+        read_failed: "读取配置文件失败：{{.Error}}"
+        unmarshal_failed: "解析配置文件失败：{{.Error}}"
+        marshal_failed: "构建配置文件失败：{{.Error}}"
+        missing_port: "配置文件中缺少 [mixed-port] 或 [port] 属性"
+        write_running_failed: "写入运行配置失败：{{.Error}}"
   # 提示消息
   info:
     no_update: "您使用的是最新版本。"
@@ -35,6 +43,8 @@ tray:
     options:
       local_ui: "本地 UI"
       official_ui: "官方 UI"
+      yacd_ui: "YACD UI"
+      zash_ui: "zashboard UI"
   open:
     title: "打开"
     options:

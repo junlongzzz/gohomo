@@ -72,7 +72,7 @@ func onReady() {
 				setCoreProxy()
 			}
 		} else {
-			messageBoxAlert(AppName, I.TranSys("msg.error.core_restart", nil))
+			messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
 		}
 	})
 
@@ -88,10 +88,10 @@ func onReady() {
 	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.official_ui", nil), "").Click(func() {
 		_ = openBrowser(coreConfig.OfficialUiAddr)
 	})
-	dashboardItem.AddSubMenuItem("YACD UI", "").Click(func() {
+	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.yacd_ui", nil), "").Click(func() {
 		_ = openBrowser(coreConfig.YACDUiAddr)
 	})
-	dashboardItem.AddSubMenuItem("zashboard UI", "").Click(func() {
+	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.zash_ui", nil), "").Click(func() {
 		_ = openBrowser(coreConfig.ZashBoardUiAddr)
 	})
 

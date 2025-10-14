@@ -4,9 +4,17 @@ msg:
   error:
     already_running: "Another instance of Gohomo is running."
     write_pid_file: "Failed to write pid file: {{.Error}}"
-    core_restart: "Failed to restart core"
-    core_start: "Failed to start core: {{.CorePath}}"
-    core_not_found: "No core found, please put it in: {{.Dir}}"
+    core:
+      start_failed: "Failed to start core"
+      restart_failed: "Failed to restart core"
+      not_found: "No core found, please put it in: {{.Dir}}"
+      config:
+        not_found: "Config file not found, please put config.yaml in {{.Dir1}} or {{.Dir2}}"
+        read_failed: "Failed to read config file: {{.Error}}"
+        unmarshal_failed: "Failed to unmarshal config file: {{.Error}}"
+        marshal_failed: "Failed to marshal config file: {{.Error}}"
+        missing_port: "Attribute [mixed-port] or [port] is missing in the config file"
+        write_running_failed: "Failed to write the running config: {{.Error}}"
   # 提示消息
   info:
     no_update: "You are using the latest version."
@@ -35,6 +43,8 @@ tray:
     options:
       local_ui: "Local UI"
       official_ui: "Official UI"
+      yacd_ui: "YACD UI"
+      zash_ui: "zashboard UI"
   open:
     title: "Open"
     options:

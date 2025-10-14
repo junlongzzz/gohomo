@@ -60,17 +60,20 @@ func loadCoreConfig() error {
 		}
 	}
 	if !isFileExist(coreConfigPath) {
-		return fmt.Errorf("config file not found, please put config.yaml in %s or %s", workDir, coreDir)
+		return fmt.Errorf(I.TranSys("msg.error.core.config.not_found", map[string]any{
+			"Dir1": workDir,
+			"Dir2": coreDir,
+		}))
 	}
 	configBytes, err := os.ReadFile(coreConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %v", err)
+		return fmt.Errorf(I.TranSys("msg.error.core.config.read_failed", map[string]any{"Error": err}))
 	}
 
 	// 解析yaml至map以获取到所有配置
 	var configMap = map[string]any{}
 	if err = yaml.Unmarshal(configBytes, &configMap); err != nil {
-		return fmt.Errorf("failed to unmarshal config file: %v", err)
+		return fmt.Errorf(I.TranSys("msg.error.core.config.unmarshal_failed", map[string]any{"Error": err}))
 	}
 
 	// 开始从map中获取配置项
@@ -101,7 +104,7 @@ func loadCoreConfig() error {
 	}
 
 	if coreConfig.HttpProxyPort == 0 {
-		return fmt.Errorf("http proxy port not set")
+		return fmt.Errorf(I.TranSys("msg.error.core.config.missing_port", nil))
 	}
 
 	if host, port, err := net.SplitHostPort(coreConfig.ExternalController); err == nil && coreConfig.ExternalUi != "" {
@@ -111,7 +114,7 @@ func loadCoreConfig() error {
 			// 去除开头/末尾的斜杠
 			uiUrlPath += "/" + strings.Trim(coreConfig.ExternalUiName, "/")
 		}
-		if host == "" || host == "0.0.0.0" {
+		if host == "" || host == "0.0.0.0" || host == "::" {
 			// 形如 :9090 的格式，监听的是所有地址，管理面板就默认使用本地地址
 			host = "127.0.0.1"
 		}
@@ -131,14 +134,14 @@ func loadCoreConfig() error {
 
 	var out []byte
 	if out, err = yaml.Marshal(&configMap); err != nil {
-		return fmt.Errorf("failed to marshal config file: %v", err)
+		return fmt.Errorf(I.TranSys("msg.error.core.config.marshal_failed", map[string]any{"Error": err}))
 	}
 	if coreRunConfigPath == "" {
 		coreRunConfigPath = filepath.Join(coreDir, "config.auto-gen")
 	}
 	// 保存到运行配置文件
 	if err = os.WriteFile(coreRunConfigPath, out, 0644); err != nil {
-		return fmt.Errorf("failed to write run config file: %v", err)
+		return fmt.Errorf(I.TranSys("msg.error.core.config.write_running_failed", map[string]any{"Error": err}))
 	}
 
 	log.Println("Core config loaded:", coreConfigPath)

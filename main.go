@@ -32,9 +32,6 @@ var (
 )
 
 func main() {
-	// 设置高DPI感知，避免界面模糊
-	setDPIAware()
-
 	// 初始化i18n
 	I = i18n.New()
 	if err := I.Init(); err != nil {
@@ -110,7 +107,7 @@ func main() {
 		return nil
 	})
 	if corePath == "" {
-		fatal(I.TranSys("msg.error.core_not_found", map[string]any{"Dir": workDir}))
+		fatal(I.TranSys("msg.error.core.not_found", map[string]any{"Dir": workDir}))
 	} else {
 		// 获取core文件名
 		coreName = filepath.Base(corePath)
@@ -125,7 +122,7 @@ func main() {
 		// 设置系统代理
 		setCoreProxy()
 	} else {
-		fatal(I.TranSys("msg.error.core_start", map[string]any{"CorePath": corePath}))
+		fatal(I.TranSys("msg.error.core.start_failed", nil))
 	}
 
 	// 系统托盘
@@ -163,9 +160,7 @@ func checkSingleInstance() {
 	// 保存当前进程的pid到文件
 	err := os.WriteFile(pidFilePath, []byte(strconv.Itoa(os.Getpid())), 0644)
 	if err != nil {
-		fatal(I.TranSys("msg.error.write_pid_file", map[string]any{
-			"Error": err,
-		}))
+		fatal(I.TranSys("msg.error.write_pid_file", map[string]any{"Error": err}))
 	}
 }
 
