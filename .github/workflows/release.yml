@@ -11,15 +11,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         goos: [ windows ]
         goarch: [ amd64, arm64 ]
-
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout code
@@ -52,12 +49,33 @@ jobs:
           cd ..
           echo -n "${{ env.COMMIT_TAG }}" > bin/version.txt
 
-      - name: Upload release assets
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gohomo-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            bin/*.zip
+            bin/version.txt
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: bin
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            bin/*.zip
-            bin/version.txt
+            bin/**/*.zip
+            bin/**/version.txt
           draft: false
           prerelease: false
           make_latest: true
