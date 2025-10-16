@@ -4,9 +4,11 @@ import (
 	"embed"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 
 	"github.com/energye/systray"
@@ -15,6 +17,9 @@ import (
 
 //go:embed static/*
 var staticFiles embed.FS // 嵌入静态文件
+
+// 匹配该应用版本号正则
+var versionRegex = regexp.MustCompile(`^\d{8}$`)
 
 // 初始化系统托盘
 func initSystray() {
@@ -154,9 +159,12 @@ func onReady() {
 				return
 			}
 			latestVersion := string(body)
-			if latestVersion != "" && latestVersion != version {
+			if latestVersion != "" && versionRegex.MatchString(latestVersion) && latestVersion != version {
 				if messageBoxConfirm(AppName, I.TranSys("msg.info.update_available", map[string]any{"Version": latestVersion})) {
-					_ = openBrowser(fmt.Sprintf("%s/releases/latest", AppGitHubRepo))
+					downloadUrl := fmt.Sprintf("%s/releases/download/%s/gohomo-%s-%s-%s.zip", AppGitHubRepo,
+						latestVersion, runtime.GOOS, runtime.GOARCH, latestVersion)
+					log.Println("Update package download url:", downloadUrl)
+					_ = openBrowser(downloadUrl)
 				}
 			} else {
 				messageBoxAlert(AppName, I.TranSys("msg.info.no_update", nil))
