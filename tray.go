@@ -114,8 +114,8 @@ func onReady() {
 		cmd.Dir = workDir
 		// 设置代理环境变量
 		cmd.Env = append(os.Environ(),
-			fmt.Sprintf("HTTP_PROXY=http://127.0.0.1:%d", coreConfig.HttpProxyPort),
-			fmt.Sprintf("HTTPS_PROXY=http://127.0.0.1:%d", coreConfig.HttpProxyPort))
+			fmt.Sprintf("HTTP_PROXY=http://%s", getProxyServer()),
+			fmt.Sprintf("HTTPS_PROXY=http://%s", getProxyServer()))
 		cmd.SysProcAttr = &windows.SysProcAttr{
 			CreationFlags: windows.CREATE_NEW_CONSOLE | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_NEW_PROCESS_GROUP,
 		}
