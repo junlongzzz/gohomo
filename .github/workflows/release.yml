@@ -47,18 +47,17 @@ jobs:
           CGO_ENABLED: 0
           LDFLAGS: '-s -w -X main.build=${{ env.COMMIT_SHA_SHORT }} -X main.version=${{ env.COMMIT_TAG }} -H=windowsgui'
         run: |
-          mkdir -p bin
           go version
-          go build -ldflags="${{ env.LDFLAGS }}" -trimpath -o bin/gohomo.exe .
-          cd bin
+          go build -ldflags="${{ env.LDFLAGS }}" -trimpath -o out/gohomo.exe .
+          cd out
           zip -r gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_TAG }}.zip *
           cd ..
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: gohomo-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: bin/*.zip
+          path: out/*.zip
 
   release:
     runs-on: ubuntu-latest
@@ -69,7 +68,7 @@ jobs:
 
     steps:
       - name: Download all build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           path: bin
 
