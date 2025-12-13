@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
-	"gopkg.in/yaml.v3"
+	"github.com/spf13/viper"
 )
 
 // CoreConfig core配置信息
@@ -37,15 +38,48 @@ var (
 	coreConfigPath    string // core配置文件路径
 	coreRunConfigPath string // core实际运行配置文件路径
 
-	coreConfig *CoreConfig // core配置信息
+	coreConfig      atomic.Value // core配置信息 store *CoreConfig
+	coreConfigViper *viper.Viper // viper对象
 
 	mutex sync.Mutex // 互斥锁
 )
 
-// 加载配置文件
-func loadCoreConfig() error {
-	coreConfig = &CoreConfig{}
+// 初始化core
+func initCore() {
+	coreDir = filepath.Join(workDir, "core")
+	if !isFileExist(coreDir) {
+		// core目录不存在则自动创建
+		if err := os.Mkdir(coreDir, 0755); err != nil {
+			fatal("Failed to create core directory:", err)
+		}
+	}
 
+	// 查找工作目录下是否存在文件名以 mihomo 开头，以 .exe 结尾的文件
+	_ = filepath.WalkDir(workDir, func(path string, info os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() && path != workDir {
+			// 跳过子目录
+			return filepath.SkipDir
+		}
+		name := strings.ToLower(info.Name())
+		if strings.HasPrefix(name, strings.ToLower(CoreShowName)) && strings.HasSuffix(name, ".exe") {
+			corePath = path
+			log.Println("Found core:", corePath)
+			return fmt.Errorf("found core") // 找到文件后返回自定义错误退出遍历
+		}
+		return nil
+	})
+	if corePath == "" {
+		fatal(I.TranSys("msg.error.core.not_found", map[string]any{"Dir": workDir}))
+	} else {
+		// 获取core文件名
+		coreName = filepath.Base(corePath)
+	}
+
+	// 运行配置文件路径
+	coreRunConfigPath = filepath.Join(coreDir, "config.auto-gen")
 	// 配置文件搜索路径
 	var configSearchPaths = []string{
 		filepath.Join(workDir, "config.yaml"),
@@ -60,90 +94,100 @@ func loadCoreConfig() error {
 		}
 	}
 	if !isFileExist(coreConfigPath) {
-		return fmt.Errorf(I.TranSys("msg.error.core.config.not_found", map[string]any{
+		fatal(I.TranSys("msg.error.core.config.not_found", map[string]any{
 			"Dir1": workDir,
 			"Dir2": coreDir,
 		}))
 	}
-	configBytes, err := os.ReadFile(coreConfigPath)
-	if err != nil {
+
+	// 初始化配置对象
+	coreConfig.Store(&CoreConfig{})
+
+	coreConfigViper = viper.New()
+	coreConfigViper.AddConfigPath(workDir)
+	coreConfigViper.AddConfigPath(coreDir)
+	coreConfigViper.SetConfigFile(coreConfigPath)
+	// 加载核心配置
+	if err := loadCoreConfig(); err != nil {
+		fatal(err)
+	}
+
+	if startCore() {
+		// 设置系统代理
+		setCoreProxy()
+	} else {
+		fatal(I.TranSys("msg.error.core.start_failed", nil))
+	}
+}
+
+// 加载配置文件
+func loadCoreConfig() error {
+	if err := coreConfigViper.ReadInConfig(); err != nil {
 		return fmt.Errorf(I.TranSys("msg.error.core.config.read_failed", map[string]any{"Error": err}))
 	}
 
-	// 解析yaml至map以获取到所有配置
-	var configMap = map[string]any{}
-	if err = yaml.Unmarshal(configBytes, &configMap); err != nil {
-		return fmt.Errorf(I.TranSys("msg.error.core.config.unmarshal_failed", map[string]any{"Error": err}))
-	}
+	// 读取配置到临时配置对象
+	tempConfig := &CoreConfig{}
 
-	// 开始从map中获取配置项
-	if configMap["port"] != nil {
-		coreConfig.Port = configMap["port"].(int)
-		coreConfig.HttpProxyPort = coreConfig.Port
+	if mixedPort := coreConfigViper.GetInt("mixed-port"); mixedPort != 0 {
+		tempConfig.MixedPort = mixedPort
+		tempConfig.HttpProxyPort = mixedPort
+	} else if port := coreConfigViper.GetInt("port"); port != 0 {
+		tempConfig.Port = port
+		tempConfig.HttpProxyPort = port
 	}
-
-	if configMap["mixed-port"] != nil {
-		coreConfig.MixedPort = configMap["mixed-port"].(int)
-		coreConfig.HttpProxyPort = coreConfig.MixedPort
-	}
-
-	if configMap["external-controller"] != nil && configMap["external-controller"] != "" {
-		coreConfig.ExternalController = configMap["external-controller"].(string)
-	}
-
-	if configMap["secret"] != nil && configMap["secret"] != "" {
-		coreConfig.Secret = configMap["secret"].(string)
-	}
-
-	if configMap["external-ui"] != nil && configMap["external-ui"] != "" {
-		coreConfig.ExternalUi = configMap["external-ui"].(string)
-	}
-
-	if configMap["external-ui-name"] != nil && configMap["external-ui-name"] != "" {
-		coreConfig.ExternalUiName = configMap["external-ui-name"].(string)
-	}
-
-	if coreConfig.HttpProxyPort == 0 {
+	if tempConfig.HttpProxyPort == 0 {
 		return fmt.Errorf(I.TranSys("msg.error.core.config.missing_port", nil))
 	}
 
-	if host, port, err := net.SplitHostPort(coreConfig.ExternalController); err == nil && coreConfig.ExternalUi != "" {
+	tempConfig.ExternalController = coreConfigViper.GetString("external-controller")
+	tempConfig.Secret = coreConfigViper.GetString("secret")
+	tempConfig.ExternalUi = coreConfigViper.GetString("external-ui")
+	tempConfig.ExternalUiName = coreConfigViper.GetString("external-ui-name")
+
+	if host, port, err := net.SplitHostPort(tempConfig.ExternalController); err == nil && tempConfig.ExternalUi != "" {
 		// 需要配置了外部控制器API和外部用户UI时才能使用控制面板
 		uiUrlPath := "/ui"
-		if coreConfig.ExternalUiName != "" {
+		if tempConfig.ExternalUiName != "" {
 			// 去除开头/末尾的斜杠
-			uiUrlPath += "/" + strings.Trim(coreConfig.ExternalUiName, "/")
+			uiUrlPath += "/" + strings.Trim(tempConfig.ExternalUiName, "/")
 		}
 		if host == "" || host == "0.0.0.0" || host == "::" {
 			// 形如 :9090 的格式，监听的是所有地址，管理面板就默认使用本地地址
 			host = "127.0.0.1"
 		}
 		// 本地面板地址
-		coreConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/#/setup?http=true&hostname=%s&port=%s&secret=%s",
-			net.JoinHostPort(host, port), uiUrlPath, host, port, coreConfig.Secret)
+		tempConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/#/setup?http=true&hostname=%s&port=%s&secret=%s",
+			net.JoinHostPort(host, port), uiUrlPath, host, port, tempConfig.Secret)
 		// 官方面板地址
-		coreConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/#/setup?http=true&hostname=%s&port=%s&secret=%s",
-			host, port, coreConfig.Secret)
+		tempConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/#/setup?http=true&hostname=%s&port=%s&secret=%s",
+			host, port, tempConfig.Secret)
 		// Yet Another Clash Dashboard
-		coreConfig.YACDUiAddr = fmt.Sprintf("https://yacd.metacubex.one/?hostname=%s&port=%s&secret=%s",
-			host, port, coreConfig.Secret)
+		tempConfig.YACDUiAddr = fmt.Sprintf("https://yacd.metacubex.one/?hostname=%s&port=%s&secret=%s",
+			host, port, tempConfig.Secret)
 		// zashboard
-		coreConfig.ZashBoardUiAddr = fmt.Sprintf("https://board.zash.run.place/#/setup?http=true&hostname=%s&port=%s&secret=%s",
-			host, port, coreConfig.Secret)
+		tempConfig.ZashBoardUiAddr = fmt.Sprintf("https://board.zash.run.place/#/setup?http=true&hostname=%s&port=%s&secret=%s",
+			host, port, tempConfig.Secret)
 	}
 
-	var out []byte
-	if out, err = yaml.Marshal(&configMap); err != nil {
-		return fmt.Errorf(I.TranSys("msg.error.core.config.marshal_failed", map[string]any{"Error": err}))
-	}
-	if coreRunConfigPath == "" {
-		coreRunConfigPath = filepath.Join(coreDir, "config.auto-gen")
-	}
 	// 保存到运行配置文件
-	if err = os.WriteFile(coreRunConfigPath, out, 0644); err != nil {
+	if err := func() error {
+		f, err := os.OpenFile(coreRunConfigPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		if err = coreConfigViper.WriteConfigTo(f); err != nil {
+			return err
+		}
+		return f.Sync()
+	}(); err != nil {
 		return fmt.Errorf(I.TranSys("msg.error.core.config.write_running_failed", map[string]any{"Error": err}))
 	}
 
+	// 配置解析校验成功，临时配置提交给正式配置
+	coreConfig.Store(tempConfig)
 	log.Println("Core config loaded:", coreConfigPath)
 	return nil
 }
@@ -209,7 +253,7 @@ func isCoreRunning() bool {
 
 // 设置系统代理为core配置的代理
 func setCoreProxy() bool {
-	set := setProxy(true, "127.0.0.1", fmt.Sprintf("%d", coreConfig.HttpProxyPort), "")
+	set := setProxy(true, "127.0.0.1", fmt.Sprintf("%d", getCoreConfig().HttpProxyPort), "")
 	if set {
 		proxyUrl := fmt.Sprintf("http://%s", getProxyServer())
 		// 设置环境变量
@@ -232,4 +276,9 @@ func getCoreVersion() string {
 		}
 	}
 	return ""
+}
+
+// 获取core配置信息
+func getCoreConfig() *CoreConfig {
+	return coreConfig.Load().(*CoreConfig)
 }

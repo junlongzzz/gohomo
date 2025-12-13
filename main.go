@@ -46,24 +46,14 @@ func main() {
 		fatal("Failed to get executable path:", err)
 	}
 	workDir = filepath.Dir(executable)
-	coreDir = filepath.Join(workDir, "core")
+
 	logDir = filepath.Join(workDir, "logs")
-
-	if !isFileExist(coreDir) {
-		// core目录不存在则自动创建
-		if err := os.Mkdir(coreDir, 0755); err != nil {
-			fatal("Failed to create core directory:", err)
-		}
-	}
-
 	if !isFileExist(logDir) {
 		// 日志目录不存在则自动创建
-		err := os.Mkdir(logDir, 0755)
-		if err != nil {
+		if err := os.Mkdir(logDir, 0755); err != nil {
 			fatal("Failed to create log directory:", err)
 		}
 	}
-
 	// 删除7天前的日志文件
 	go delOutdatedLogs(7 * 24 * time.Hour)
 	// 使用当天日期作为日志文件名
@@ -89,42 +79,8 @@ func main() {
 	log.Println(fmt.Sprintf("Version: %s (%s)", version, build))
 	log.Println("Work directory:", workDir)
 
-	// 查找工作目录下是否存在文件名以 mihomo 开头，以 .exe 结尾的文件
-	_ = filepath.WalkDir(workDir, func(path string, info os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() && path != workDir {
-			// 跳过子目录
-			return filepath.SkipDir
-		}
-		name := strings.ToLower(info.Name())
-		if strings.HasPrefix(name, strings.ToLower(CoreShowName)) && strings.HasSuffix(name, ".exe") {
-			corePath = path
-			log.Println("Found core:", corePath)
-			return fmt.Errorf("found core") // 找到文件后返回自定义错误退出遍历
-		}
-		return nil
-	})
-	if corePath == "" {
-		fatal(I.TranSys("msg.error.core.not_found", map[string]any{"Dir": workDir}))
-	} else {
-		// 获取core文件名
-		coreName = filepath.Base(corePath)
-	}
-
-	// 加载核心配置
-	if err := loadCoreConfig(); err != nil {
-		fatal(err)
-	}
-
-	if startCore() {
-		// 设置系统代理
-		setCoreProxy()
-	} else {
-		fatal(I.TranSys("msg.error.core.start_failed", nil))
-	}
-
+	// 初始化核心
+	initCore()
 	// 系统托盘
 	initSystray()
 }
@@ -134,7 +90,8 @@ func fatal(v ...any) {
 	log.Println(v...)
 	messageBoxAlert(AppName, fmt.Sprintln(v...))
 	// 退出程序
-	os.Exit(0)
+	//os.Exit(0)
+	onExit()
 }
 
 // 获取pid文件路径

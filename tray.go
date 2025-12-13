@@ -71,12 +71,12 @@ func onReady() {
 			return
 		}
 		if restartCore() {
-			//sendNotification("Core restarted")
 			if sysProxyItem != nil && sysProxyItem.Checked() {
 				// 重新设置代理
 				setCoreProxy()
 			}
 		} else {
+			unsetProxy()
 			messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
 		}
 	})
@@ -88,16 +88,16 @@ func onReady() {
 
 	dashboardItem := systray.AddMenuItem(I.TranSys("tray.core_dashboard.title", nil), "")
 	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.local_ui", nil), "").Click(func() {
-		_ = openBrowser(coreConfig.ExternalUiAddr)
+		_ = openBrowser(getCoreConfig().ExternalUiAddr)
 	})
 	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.official_ui", nil), "").Click(func() {
-		_ = openBrowser(coreConfig.OfficialUiAddr)
+		_ = openBrowser(getCoreConfig().OfficialUiAddr)
 	})
 	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.yacd_ui", nil), "").Click(func() {
-		_ = openBrowser(coreConfig.YACDUiAddr)
+		_ = openBrowser(getCoreConfig().YACDUiAddr)
 	})
 	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.zash_ui", nil), "").Click(func() {
-		_ = openBrowser(coreConfig.ZashBoardUiAddr)
+		_ = openBrowser(getCoreConfig().ZashBoardUiAddr)
 	})
 
 	// 分割线
@@ -198,7 +198,7 @@ func onReady() {
 			go func() {
 				coreItem.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
 				// 判断是否展示外部控制面板菜单项
-				if coreConfig.ExternalUiAddr == "" {
+				if getCoreConfig().ExternalUiAddr == "" {
 					dashboardItem.Hide()
 				} else {
 					dashboardItem.Show()
