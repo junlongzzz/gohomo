@@ -41,7 +41,7 @@ var (
 	coreConfig      atomic.Value // core配置信息 store *CoreConfig
 	coreConfigViper *viper.Viper // viper对象
 
-	mutex sync.Mutex // 互斥锁
+	coreMutex sync.Mutex // 互斥锁
 )
 
 // 初始化core
@@ -104,8 +104,6 @@ func initCore() {
 	coreConfig.Store(&CoreConfig{})
 
 	coreConfigViper = viper.New()
-	coreConfigViper.AddConfigPath(workDir)
-	coreConfigViper.AddConfigPath(coreDir)
 	coreConfigViper.SetConfigFile(coreConfigPath)
 	// 加载核心配置
 	if err := loadCoreConfig(); err != nil {
@@ -127,7 +125,7 @@ func loadCoreConfig() error {
 	}
 
 	// 读取配置到临时配置对象
-	tempConfig := &CoreConfig{}
+	tempConfig := new(CoreConfig)
 
 	if mixedPort := coreConfigViper.GetInt("mixed-port"); mixedPort != 0 {
 		tempConfig.MixedPort = mixedPort
@@ -194,8 +192,8 @@ func loadCoreConfig() error {
 
 // 启动core程序
 func startCore() bool {
-	mutex.Lock()
-	defer mutex.Unlock()
+	coreMutex.Lock()
+	defer coreMutex.Unlock()
 
 	if isCoreRunning() {
 		log.Println("Core is already running")
@@ -219,8 +217,8 @@ func startCore() bool {
 
 // 停止core程序
 func stopCore() bool {
-	mutex.Lock()
-	defer mutex.Unlock()
+	coreMutex.Lock()
+	defer coreMutex.Unlock()
 
 	if !isCoreRunning() {
 		log.Println("Core is not running")
@@ -253,7 +251,7 @@ func isCoreRunning() bool {
 
 // 设置系统代理为core配置的代理
 func setCoreProxy() bool {
-	set := setProxy(true, "127.0.0.1", fmt.Sprintf("%d", getCoreConfig().HttpProxyPort), "")
+	set := setProxy(true, "127.0.0.1", fmt.Sprintf("%d", getCoreConfig().HttpProxyPort), strings.Join(getAppConfig().ProxyByPass, ";"))
 	if set {
 		proxyUrl := fmt.Sprintf("http://%s", getProxyServer())
 		// 设置环境变量

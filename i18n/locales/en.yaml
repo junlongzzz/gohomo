@@ -11,8 +11,6 @@ msg:
       config:
         not_found: "Config file not found, please put config.yaml in {{.Dir1}} or {{.Dir2}}"
         read_failed: "Failed to read config file: {{.Error}}"
-        unmarshal_failed: "Failed to unmarshal config file: {{.Error}}"
-        marshal_failed: "Failed to marshal config file: {{.Error}}"
         missing_port: "Attribute [mixed-port] or [port] is missing in the config file"
         write_running_failed: "Failed to write the running config: {{.Error}}"
   # 提示消息
@@ -51,6 +49,7 @@ tray:
       work_dir: "Work Directory"
       powershell: "PowerShell"
       cmd: "Command Prompt"
+  app_config: "App Config"
   check_update: "Check Update"
   about: "About"
   exit: "Exit"

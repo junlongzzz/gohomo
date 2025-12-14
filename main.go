@@ -13,15 +13,6 @@ import (
 	"github.com/junlongzzz/gohomo/i18n"
 )
 
-const (
-	// AppName 程序名称
-	AppName = "Gohomo"
-	// CoreShowName 核心名称
-	CoreShowName = "Mihomo"
-	// AppGitHubRepo 程序GitHub仓库
-	AppGitHubRepo = "https://github.com/junlongzzz/gohomo"
-)
-
 var (
 	build   string // 编译时的git提交哈希
 	version string // 程序版本
@@ -79,6 +70,8 @@ func main() {
 	log.Println(fmt.Sprintf("Version: %s (%s)", version, build))
 	log.Println("Work directory:", workDir)
 
+	// 初始化应用配置
+	initAppConfig()
 	// 初始化核心
 	initCore()
 	// 系统托盘

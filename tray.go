@@ -144,6 +144,11 @@ func onReady() {
 	// 分割线
 	systray.AddSeparator()
 
+	systray.AddMenuItem(I.TranSys("tray.app_config", nil), "").Click(func() {
+		// 打开配置文件
+		_ = openBrowser(appConfigPath)
+	})
+
 	systray.AddMenuItem(I.TranSys("tray.check_update", nil), "").Click(func() {
 		go func() {
 			resp, err := http.Get(fmt.Sprintf("%s/releases/latest/download/version.txt", AppGitHubRepo))
