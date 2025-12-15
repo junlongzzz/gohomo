@@ -13,7 +13,8 @@ import (
 )
 
 type AppConfig struct {
-	ProxyByPass []string `yaml:"proxy-by-pass" mapstructure:"proxy-by-pass"` // 代理白名单地址
+	CoreLogEnabled bool     `yaml:"core-log-enabled" mapstructure:"core-log-enabled"` // 是否启用记录核心日志
+	ProxyByPass    []string `yaml:"proxy-by-pass" mapstructure:"proxy-by-pass"`       // 代理白名单地址
 }
 
 const (
@@ -28,13 +29,14 @@ const (
 var (
 	appConfigPath  string       // 应用配置文件路径
 	appConfig      atomic.Value // store *AppConfig
-	appConfigViper *viper.Viper
+	appConfigViper *viper.Viper // 配置文件解析器
 )
 
 func initAppConfig() {
 	// 初始化默认配置
 	appConfig.Store(&AppConfig{
-		ProxyByPass: defaultBypassHosts,
+		CoreLogEnabled: false,
+		ProxyByPass:    defaultBypassHosts,
 	})
 
 	appConfigPath = filepath.Join(workDir, "gohomo.yaml")
@@ -97,6 +99,9 @@ func watchAppConfig() {
 			log.Println("Failed to reload app config:", err)
 			return
 		}
+
+		// 重载核心日志配置
+		coreLogWriter.Switch(getAppConfig().CoreLogEnabled)
 
 		// 重载代理配置
 		if getProxyEnable() {

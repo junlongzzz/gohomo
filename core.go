@@ -39,9 +39,10 @@ var (
 	coreRunConfigPath string // core实际运行配置文件路径
 
 	coreConfig      atomic.Value // core配置信息 store *CoreConfig
-	coreConfigViper *viper.Viper // viper对象
+	coreConfigViper *viper.Viper // core配置文件解析器
 
-	coreMutex sync.Mutex // 互斥锁
+	coreMutex     sync.Mutex    // 互斥锁
+	coreLogWriter *SwitchWriter // 日志输出
 )
 
 // 初始化core
@@ -109,6 +110,9 @@ func initCore() {
 	if err := loadCoreConfig(); err != nil {
 		fatal(err)
 	}
+
+	// 初始化日志输出
+	coreLogWriter = NewSwitchWriter(log.Writer(), getAppConfig().CoreLogEnabled)
 
 	if startCore() {
 		// 设置系统代理
@@ -203,8 +207,8 @@ func startCore() bool {
 	// 启动core程序
 	cmd := execCommand(corePath, "-d", coreDir, "-f", coreRunConfigPath)
 	// 重定向输出到log
-	cmd.Stdout = log.Writer()
-	cmd.Stderr = log.Writer()
+	cmd.Stdout = coreLogWriter
+	cmd.Stderr = coreLogWriter
 	//cmd.Stdin = nil
 	if err := cmd.Start(); err != nil {
 		log.Println("Failed to start core:", err)
