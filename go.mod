@@ -6,12 +6,12 @@ require (
 	github.com/energye/systray v1.0.2
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-toast/toast v0.0.0-20190211030409-01e6764cf0a4
-	github.com/nicksnyder/go-i18n/v2 v2.6.0
+	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/spf13/viper v1.21.0
 	github.com/xishang0128/sysproxy-go v0.0.0-20251022110932-8ec67a93fb7f
 	go.yaml.in/yaml/v3 v3.0.4
-	golang.org/x/sys v0.39.0
-	golang.org/x/text v0.32.0
+	golang.org/x/sys v0.40.0
+	golang.org/x/text v0.33.0
 )
 
 require (
@@ -19,7 +19,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.3 // indirect
 	github.com/go-chi/render v1.0.3 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/godbus/dbus/v5 v5.2.0 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect

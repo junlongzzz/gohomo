@@ -1,10 +1,20 @@
 version: '3'
 tasks:
+  install-winres:
+    internal: true
+    desc: Check and install go-winres
+    # 如果 go-winres help 执行失败，说明没安装或不在 PATH 中，则触发安装
+    status:
+      - go-winres help
+    cmds:
+      - echo "No go-winres found, trying to install..."
+      - go install github.com/tc-hib/go-winres@latest
   winres:
     platforms:
       - windows
     desc: Generate windows build resource
-    # go install github.com/tc-hib/go-winres@latest
+    deps:
+      - install-winres
     cmd: go-winres make --arch amd64,arm64
   build:
     desc: Build executable files
