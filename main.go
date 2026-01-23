@@ -86,10 +86,14 @@ func main() {
 // 发生错误退出程序时的提示，避免无法看到错误消息
 func fatal(v ...any) {
 	log.Println(v...)
+	if lockFileHandle != 0 {
+		// 文件锁已经初始化表示程序已正常运行，退出需要清理
+		unsetProxy()
+		stopCore()
+	}
 	messageBoxAlert(AppName, fmt.Sprintln(v...))
 	// 退出程序
-	//os.Exit(0)
-	onExit()
+	os.Exit(0)
 }
 
 // 检查是否为单实例
