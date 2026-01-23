@@ -1,16 +1,17 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/junlongzzz/gohomo/i18n"
+	"golang.org/x/sys/windows"
 )
 
 var (
@@ -20,6 +21,8 @@ var (
 	logDir  string // 日志目录
 
 	I *i18n.I18n // i18n
+
+	lockFileHandle windows.Handle // 锁文件句柄
 )
 
 func main() {
@@ -31,6 +34,8 @@ func main() {
 
 	// 检查是否为单实例
 	checkSingleInstance()
+	defer windows.CloseHandle(lockFileHandle)
+
 	// 获取当前程序的执行所在目录
 	executable, err := os.Executable()
 	if err != nil {
@@ -63,7 +68,7 @@ func main() {
 			panicMsg := fmt.Sprintf("Panic: %v", r)
 			log.Println(panicMsg)
 			log.Println("Stack trace:\n", string(debug.Stack()))
-			messageBoxAlert(AppName, panicMsg)
+			fatal(panicMsg)
 		}
 	}()
 
@@ -87,31 +92,35 @@ func fatal(v ...any) {
 	onExit()
 }
 
-// 获取pid文件路径
-func getPidFilePath() string {
-	// 临时目录内
-	return filepath.Join(os.TempDir(), "gohomo.pid")
-}
-
 // 检查是否为单实例
 func checkSingleInstance() {
-	pidFilePath := getPidFilePath()
-	if isFileExist(pidFilePath) {
-		bytes, _ := os.ReadFile(pidFilePath)
-		if bytes != nil && len(bytes) > 0 {
-			// 判断pid对应进程是否还在运行
-			pid, err := strconv.Atoi(string(bytes))
-			if err == nil && pid > 0 && isProcessRunningByPid(pid) {
-				fatal(I.TranSys("msg.error.already_running", nil))
-			}
+	lockPath := filepath.Join(os.TempDir(), "gohomo.pid")
+	// 将路径转换为 UTF16
+	pathPtr, _ := windows.UTF16PtrFromString(lockPath)
+
+	// 尝试创建/打开文件
+	// FILE_SHARE_READ: 允许别人读
+	// 但不给 FILE_SHARE_WRITE 或 FILE_SHARE_DELETE，这样第二个进程尝试打开时就会失败
+	handle, err := windows.CreateFile(
+		pathPtr,
+		windows.GENERIC_READ|windows.GENERIC_WRITE,
+		0, // 0 表示不共享：第二个进程尝试打开会报 "Access is denied"
+		nil,
+		windows.OPEN_ALWAYS,
+		windows.FILE_ATTRIBUTE_NORMAL,
+		0,
+	)
+
+	if err != nil {
+		// 如果报错是“拒绝访问”或“文件被占用”，说明已有实例
+		if errors.Is(err, windows.ERROR_SHARING_VIOLATION) || errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+			fatal(I.TranSys("msg.error.already_running", nil))
 		}
+		return
 	}
 
-	// 保存当前进程的pid到文件
-	err := os.WriteFile(pidFilePath, []byte(strconv.Itoa(os.Getpid())), 0644)
-	if err != nil {
-		fatal(I.TranSys("msg.error.write_pid_file", map[string]any{"Error": err}))
-	}
+	// 成功获取句柄，将其存入全局变量防止被 GC 回收
+	lockFileHandle = handle
 }
 
 // 删除清理指定过期时长的日志文件

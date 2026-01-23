@@ -48,6 +48,7 @@ jobs:
           LDFLAGS: '-s -w -X main.build=${{ env.COMMIT_SHA_SHORT }} -X main.version=${{ env.COMMIT_TAG }} -H=windowsgui'
         run: |
           go version
+          go mod tidy
           go build -ldflags="${{ env.LDFLAGS }}" -trimpath -o out/gohomo.exe .
           cd out
           zip -r gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_TAG }}.zip *

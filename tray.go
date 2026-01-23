@@ -52,33 +52,37 @@ func onReady() {
 
 	sysProxyItem := systray.AddMenuItemCheckbox(I.TranSys("tray.system_proxy", nil), "", getProxyEnable())
 	sysProxyItem.Click(func() {
-		if sysProxyItem.Checked() {
-			if unsetProxy() {
-				sysProxyItem.Uncheck()
+		go func() {
+			if sysProxyItem.Checked() {
+				if unsetProxy() {
+					sysProxyItem.Uncheck()
+				}
+			} else {
+				if setCoreProxy() {
+					sysProxyItem.Check()
+				}
 			}
-		} else {
-			if setCoreProxy() {
-				sysProxyItem.Check()
-			}
-		}
+		}()
 	})
 
 	restartCoreItem := systray.AddMenuItem(I.TranSys("tray.restart_core", nil), "")
 	restartCoreItem.Click(func() {
-		// 重新加载核心配置
-		if err := loadCoreConfig(); err != nil {
-			messageBoxAlert(AppName, fmt.Sprint(err))
-			return
-		}
-		if restartCore() {
-			if sysProxyItem != nil && sysProxyItem.Checked() {
-				// 重新设置代理
-				setCoreProxy()
+		go func() {
+			// 重新加载核心配置
+			if err := loadCoreConfig(); err != nil {
+				go messageBoxAlert(AppName, fmt.Sprint(err))
+				return
 			}
-		} else {
-			unsetProxy()
-			messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
-		}
+			if restartCore() {
+				if sysProxyItem != nil && sysProxyItem.Checked() {
+					// 重新设置代理
+					setCoreProxy()
+				}
+			} else {
+				unsetProxy()
+				go messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
+			}
+		}()
 	})
 
 	systray.AddMenuItem(I.TranSys("tray.edit_config", nil), "").Click(func() {
@@ -123,7 +127,7 @@ func onReady() {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
-			messageBoxAlert(AppName, fmt.Sprintf("Failed to start %s: %v", shell, err))
+			go messageBoxAlert(AppName, fmt.Sprintf("Failed to start %s: %v", shell, err))
 		}
 	}
 	// 打开powershell
@@ -153,26 +157,28 @@ func onReady() {
 		go func() {
 			resp, err := http.Get(fmt.Sprintf("%s/releases/latest/download/version.txt", AppGitHubRepo))
 			if err != nil {
-				messageBoxAlert(AppName, fmt.Sprintf("Failed to check update: %v", err))
+				go messageBoxAlert(AppName, fmt.Sprintf("Failed to check update: %v", err))
 				return
 			}
 			defer resp.Body.Close()
 
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
-				messageBoxAlert(AppName, fmt.Sprintf("Failed to read response: %v", err))
+				go messageBoxAlert(AppName, fmt.Sprintf("Failed to read response: %v", err))
 				return
 			}
 			latestVersion := string(body)
 			if latestVersion != "" && versionRegex.MatchString(latestVersion) && latestVersion != version {
-				if messageBoxConfirm(AppName, I.TranSys("msg.info.update_available", map[string]any{"Version": latestVersion})) {
-					downloadUrl := fmt.Sprintf("%s/releases/download/%s/gohomo-%s-%s-%s.zip", AppGitHubRepo,
-						latestVersion, runtime.GOOS, runtime.GOARCH, latestVersion)
-					log.Println("Update package download url:", downloadUrl)
-					_ = openBrowser(downloadUrl)
-				}
+				go func() {
+					if messageBoxConfirm(AppName, I.TranSys("msg.info.update_available", map[string]any{"Version": latestVersion})) {
+						downloadUrl := fmt.Sprintf("%s/releases/download/%s/gohomo-%s-%s-%s.zip", AppGitHubRepo,
+							latestVersion, runtime.GOOS, runtime.GOARCH, latestVersion)
+						log.Println("Update package download url:", downloadUrl)
+						_ = openBrowser(downloadUrl)
+					}
+				}()
 			} else {
-				messageBoxAlert(AppName, I.TranSys("msg.info.no_update", nil))
+				go messageBoxAlert(AppName, I.TranSys("msg.info.no_update", nil))
 			}
 		}()
 	})
@@ -191,7 +197,7 @@ func onReady() {
 			"CorePath":    corePath,
 			"CoreVersion": getCoreVersion(),
 		})
-		messageBoxAlert(AppName, about)
+		go messageBoxAlert(AppName, about)
 	})
 
 	exitItem := systray.AddMenuItem(I.TranSys("tray.exit", nil), "")
@@ -200,6 +206,8 @@ func onReady() {
 	// 托盘点击事件处理函数
 	var clickFn = func(menu systray.IMenu) {
 		if menu != nil {
+			_ = menu.ShowMenu()
+
 			go func() {
 				coreItem.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
 				// 判断是否展示外部控制面板菜单项
@@ -209,7 +217,6 @@ func onReady() {
 					dashboardItem.Show()
 				}
 			}()
-			_ = menu.ShowMenu()
 		}
 	}
 	// 左键点击托盘时显示菜单
@@ -220,8 +227,6 @@ func onReady() {
 
 func onExit() {
 	// 退出程序后的处理操作
-	// 清理pid文件，写入-1
-	_ = os.WriteFile(getPidFilePath(), []byte("-1"), 0644)
 	unsetProxy()
 	stopCore()
 	os.Exit(0)
