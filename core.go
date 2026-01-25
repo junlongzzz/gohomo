@@ -271,10 +271,10 @@ func setCoreProxy() bool {
 
 // 获取core版本号
 func getCoreVersion() string {
-	if output, err := execCommand(corePath, "-v").CombinedOutput(); err == nil {
-		split := strings.Split(string(output), " ")
-		if len(split) > 2 && split[0] == CoreShowName {
-			return split[2]
+	if output, err := execCommand(corePath, "-v").Output(); err == nil {
+		fields := strings.Fields(string(output))
+		if len(fields) >= 3 && fields[0] == CoreShowName {
+			return fields[2]
 		}
 	}
 	return ""

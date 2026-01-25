@@ -206,17 +206,17 @@ func onReady() {
 	// 托盘点击事件处理函数
 	var clickFn = func(menu systray.IMenu) {
 		if menu != nil {
-			_ = menu.ShowMenu()
+			// 设置核心版本
+			coreItem.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
 
-			go func() {
-				coreItem.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
-				// 判断是否展示外部控制面板菜单项
-				if getCoreConfig().ExternalUiAddr == "" {
-					dashboardItem.Hide()
-				} else {
-					dashboardItem.Show()
-				}
-			}()
+			// 判断是否展示外部控制面板菜单项
+			if getCoreConfig().ExternalUiAddr == "" {
+				dashboardItem.Hide()
+			} else {
+				dashboardItem.Show()
+			}
+
+			_ = menu.ShowMenu()
 		}
 	}
 	// 左键点击托盘时显示菜单
