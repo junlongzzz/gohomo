@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/go-toast/toast"
+	"github.com/gen2brain/beeep"
 	"golang.org/x/sys/windows"
 )
 
@@ -211,11 +211,7 @@ func execCommand(name string, arg ...string) *exec.Cmd {
 
 // 发送通知
 func sendNotification(message string) {
-	notification := toast.Notification{
-		AppID:   AppName,
-		Message: message,
-	}
-	if err := notification.Push(); err != nil {
+	if err := beeep.Notify("", message, ""); err != nil {
 		log.Printf("Failed to send notification: %v\n", err)
 	}
 }

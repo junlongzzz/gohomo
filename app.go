@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/gen2brain/beeep"
 	"github.com/spf13/viper"
 	"go.yaml.in/yaml/v3"
 )
@@ -33,6 +34,9 @@ var (
 )
 
 func initAppConfig() {
+	// 设置通知展示程序名称
+	beeep.AppName = AppName
+
 	// 初始化默认配置
 	appConfig.Store(&AppConfig{
 		CoreLogEnabled: false,
