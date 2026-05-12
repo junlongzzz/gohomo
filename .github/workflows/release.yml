@@ -55,7 +55,7 @@ jobs:
           cd ..
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: gohomo-${{ matrix.goos }}-${{ matrix.goarch }}
           path: out/*.zip
@@ -69,7 +69,7 @@ jobs:
 
     steps:
       - name: Download all build artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: bin
 
@@ -77,7 +77,7 @@ jobs:
         run: echo -n "${{ needs.build.outputs.COMMIT_TAG }}" > bin/version.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             bin/**/*.zip

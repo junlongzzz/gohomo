@@ -8,11 +8,13 @@ msg:
       start_failed: "Failed to start core"
       restart_failed: "Failed to restart core"
       not_found: "No core found, please put it in: {{.Dir}}"
+      confirm_download: "No core found, Do you want to download the core files?"
       config:
         not_found: "Config file not found, please put config.yaml in {{.Dir1}} or {{.Dir2}}"
         read_failed: "Failed to read config file: {{.Error}}"
         missing_port: "Attribute [mixed-port] or [port] is missing in the config file"
         write_running_failed: "Failed to write the running config: {{.Error}}"
+        tun_without_admin: "TUN mode requires administrator privileges, please run Gohomo as administrator."
   # 提示消息
   info:
     no_update: "You are using the latest version."
@@ -33,7 +35,18 @@ msg:
 # 托盘
 tray:
   start_message: "Gohomo is running in the tray..."
-  system_proxy: "System Proxy"
+  proxy_mode:
+    title: "Proxy Mode"
+    options:
+      close: "Close"
+      system: "System"
+      tun: "TUN"
+  run_mode:
+    title: "Run Mode"
+    options:
+      rule: "Rule"
+      global: "Global"
+      direct: "Direct"
   restart_core: "Restart Core"
   edit_config: "Edit Config"
   core_dashboard:

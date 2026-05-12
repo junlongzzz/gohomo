@@ -1,7 +1,6 @@
 package main
 
 import (
-	"embed"
 	"fmt"
 	"io"
 	"log"
@@ -15,11 +14,25 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-//go:embed static/*
-var staticFiles embed.FS // 嵌入静态文件
-
 // 匹配该应用版本号正则
-var versionRegex = regexp.MustCompile(`^\d{8}$`)
+var (
+	versionRegex = regexp.MustCompile(`^\d{8}$`)
+
+	coreItem            *systray.MenuItem
+	proxyModeItem       *systray.MenuItem
+	proxyModeCloseItem  *systray.MenuItem
+	proxyModeSystemItem *systray.MenuItem
+	proxyModeTunItem    *systray.MenuItem
+	runModeItem         *systray.MenuItem
+	runModeRuleItem     *systray.MenuItem
+	runModeGlobalItem   *systray.MenuItem
+	runModeDirectItem   *systray.MenuItem
+	restartCoreItem     *systray.MenuItem
+	dashboardItem       *systray.MenuItem
+	dashboardLocalItem  *systray.MenuItem
+	openItem            *systray.MenuItem
+	exitItem            *systray.MenuItem
+)
 
 // 初始化系统托盘
 func initSystray() {
@@ -29,9 +42,10 @@ func initSystray() {
 func onReady() {
 	sendNotification(I.TranSys("tray.start_message", nil))
 
-	bytes, err := staticFiles.ReadFile("static/icon.ico")
-	if err == nil {
-		systray.SetIcon(bytes)
+	config := getAppConfig()
+
+	if appIconBytes != nil {
+		systray.SetIcon(appIconBytes)
 	}
 	systray.SetTitle(AppName)
 	systray.SetTooltip(AppName)
@@ -44,28 +58,41 @@ func onReady() {
 	// 分割线
 	systray.AddSeparator()
 
-	coreItem := systray.AddMenuItem(CoreShowName, CoreShowName)
+	coreItem = systray.AddMenuItem(CoreShowName, CoreShowName)
 	coreItem.Click(func() {
 		// 点击打开主页
-		_ = openBrowser("https://github.com/MetaCubeX/mihomo")
+		_ = openBrowser(CoreGitHubRepo)
 	})
 
-	sysProxyItem := systray.AddMenuItemCheckbox(I.TranSys("tray.system_proxy", nil), "", getProxyEnable())
-	sysProxyItem.Click(func() {
-		go func() {
-			if sysProxyItem.Checked() {
-				if unsetProxy() {
-					sysProxyItem.Uncheck()
-				}
-			} else {
-				if setCoreProxy() {
-					sysProxyItem.Check()
-				}
-			}
-		}()
+	proxyModeItem = systray.AddMenuItem(I.TranSys("tray.proxy_mode.title", nil), "")
+	proxyModeCloseItem = proxyModeItem.AddSubMenuItemCheckbox(I.TranSys("tray.proxy_mode.options.close", nil), "", config.ProxyMode == ProxyModeClose)
+	proxyModeSystemItem = proxyModeItem.AddSubMenuItemCheckbox(I.TranSys("tray.proxy_mode.options.system", nil), "", config.ProxyMode == ProxyModeSystem)
+	proxyModeTunItem = proxyModeItem.AddSubMenuItemCheckbox(I.TranSys("tray.proxy_mode.options.tun", nil), "", config.ProxyMode == ProxyModeTun)
+	proxyModeCloseItem.Click(func() {
+		go changeAppConfig(ProxyModeClose, "")
+	})
+	proxyModeSystemItem.Click(func() {
+		go changeAppConfig(ProxyModeSystem, "")
+	})
+	proxyModeTunItem.Click(func() {
+		go changeAppConfig(ProxyModeTun, "")
 	})
 
-	restartCoreItem := systray.AddMenuItem(I.TranSys("tray.restart_core", nil), "")
+	runModeItem = systray.AddMenuItem(I.TranSys("tray.run_mode.title", nil), "")
+	runModeRuleItem = runModeItem.AddSubMenuItemCheckbox(I.TranSys("tray.run_mode.options.rule", nil), "", config.CoreRunMode == CoreRunModeRule)
+	runModeGlobalItem = runModeItem.AddSubMenuItemCheckbox(I.TranSys("tray.run_mode.options.global", nil), "", config.CoreRunMode == CoreRunModeGlobal)
+	runModeDirectItem = runModeItem.AddSubMenuItemCheckbox(I.TranSys("tray.run_mode.options.direct", nil), "", config.CoreRunMode == CoreRunModeDirect)
+	runModeRuleItem.Click(func() {
+		go changeAppConfig("", CoreRunModeRule)
+	})
+	runModeGlobalItem.Click(func() {
+		go changeAppConfig("", CoreRunModeGlobal)
+	})
+	runModeDirectItem.Click(func() {
+		go changeAppConfig("", CoreRunModeDirect)
+	})
+
+	restartCoreItem = systray.AddMenuItem(I.TranSys("tray.restart_core", nil), "")
 	restartCoreItem.Click(func() {
 		go func() {
 			// 重新加载核心配置
@@ -74,7 +101,7 @@ func onReady() {
 				return
 			}
 			if restartCore() {
-				if sysProxyItem != nil && sysProxyItem.Checked() {
+				if config.ProxyMode == ProxyModeSystem {
 					// 重新设置代理
 					setCoreProxy()
 				}
@@ -90,8 +117,9 @@ func onReady() {
 		_ = openBrowser(coreConfigPath)
 	})
 
-	dashboardItem := systray.AddMenuItem(I.TranSys("tray.core_dashboard.title", nil), "")
-	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.local_ui", nil), "").Click(func() {
+	dashboardItem = systray.AddMenuItem(I.TranSys("tray.core_dashboard.title", nil), "")
+	dashboardLocalItem = dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.local_ui", nil), "")
+	dashboardLocalItem.Click(func() {
 		_ = openBrowser(getCoreConfig().ExternalUiAddr)
 	})
 	dashboardItem.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.official_ui", nil), "").Click(func() {
@@ -107,7 +135,7 @@ func onReady() {
 	// 分割线
 	systray.AddSeparator()
 
-	openItem := systray.AddMenuItem(I.TranSys("tray.open.title", nil), "")
+	openItem = systray.AddMenuItem(I.TranSys("tray.open.title", nil), "")
 	// 打开本地工作目录
 	openItem.AddSubMenuItem(I.TranSys("tray.open.options.work_dir", nil), "").Click(func() {
 		_ = openDirectory(workDir)
@@ -200,8 +228,10 @@ func onReady() {
 		go messageBoxAlert(AppName, about)
 	})
 
-	exitItem := systray.AddMenuItem(I.TranSys("tray.exit", nil), "")
+	exitItem = systray.AddMenuItem(I.TranSys("tray.exit", nil), "")
 	exitItem.Click(func() { systray.Quit() })
+
+	updateTrayTitle(config)
 
 	// 托盘点击事件处理函数
 	var clickFn = func(menu systray.IMenu) {
@@ -210,10 +240,16 @@ func onReady() {
 			coreItem.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
 
 			// 判断是否展示外部控制面板菜单项
-			if getCoreConfig().ExternalUiAddr == "" {
-				dashboardItem.Hide()
-			} else {
+			tempConfig := getCoreConfig()
+			if tempConfig.ApiEnabled {
 				dashboardItem.Show()
+				if tempConfig.ExternalUiAddr != "" {
+					dashboardLocalItem.Show()
+				} else {
+					dashboardLocalItem.Hide()
+				}
+			} else {
+				dashboardItem.Hide()
 			}
 
 			_ = menu.ShowMenu()
@@ -230,4 +266,18 @@ func onExit() {
 	unsetProxy()
 	stopCore()
 	os.Exit(0)
+}
+
+func updateTrayTitle(appConfig *AppConfig) {
+	proxyModeItem.SetTitle(fmt.Sprintf(
+		"%s [%s]",
+		I.TranSys("tray.proxy_mode.title", nil),
+		I.TranSys(fmt.Sprintf("tray.proxy_mode.options.%s", appConfig.ProxyMode), nil),
+	))
+
+	runModeItem.SetTitle(fmt.Sprintf(
+		"%s [%s]",
+		I.TranSys("tray.run_mode.title", nil),
+		I.TranSys(fmt.Sprintf("tray.run_mode.options.%s", appConfig.CoreRunMode), nil),
+	))
 }

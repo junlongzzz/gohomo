@@ -54,7 +54,7 @@ func main() {
 	go delOutdatedLogs(7 * 24 * time.Hour)
 	// 使用当天日期作为日志文件名
 	logFilePath := filepath.Join(logDir, fmt.Sprintf("%s.log", time.Now().Format("2006-01-02")))
-	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		fatal("Failed to open log file:", err)
 	}

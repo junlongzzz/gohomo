@@ -10,7 +10,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/spf13/cast"
 	"github.com/spf13/viper"
+	"go.yaml.in/yaml/v3"
 )
 
 // CoreConfig core配置信息
@@ -24,6 +26,7 @@ type CoreConfig struct {
 	ExternalUiName     string
 
 	// 额外自定义字段，不在yaml配置文件中
+	ApiEnabled      bool   // 是否启用外部控制api
 	ExternalUiAddr  string // 外部ui地址
 	OfficialUiAddr  string // 官方ui地址
 	YACDUiAddr      string // Yet Another Clash Dashboard ui地址
@@ -73,6 +76,10 @@ func initCore() {
 		return nil
 	})
 	if corePath == "" {
+		if messageBoxConfirm(AppName, I.TranSys("msg.error.core.confirm_download", nil)) {
+			_ = openBrowser(fmt.Sprintf("%s/releases/latest", CoreGitHubRepo))
+			os.Exit(0)
+		}
 		fatal(I.TranSys("msg.error.core.not_found", map[string]any{"Dir": workDir}))
 	} else {
 		// 获取core文件名
@@ -95,10 +102,16 @@ func initCore() {
 		}
 	}
 	if !isFileExist(coreConfigPath) {
-		fatal(I.TranSys("msg.error.core.config.not_found", map[string]any{
-			"Dir1": workDir,
-			"Dir2": coreDir,
-		}))
+		// 没有核心配置时，创建一个最小化的初始配置
+		log.Println("Can't find core config, create a initial config file")
+		coreConfigPath = configSearchPaths[0]
+		if err := os.WriteFile(coreConfigPath, []byte(`mixed-port: 7890`), 0644); err != nil {
+			// 创建初始配置失败时直接抛错提示
+			fatal(I.TranSys("msg.error.core.config.not_found", map[string]any{
+				"Dir1": workDir,
+				"Dir2": coreDir,
+			}))
+		}
 	}
 
 	// 初始化配置对象
@@ -115,8 +128,10 @@ func initCore() {
 	coreLogWriter = NewSwitchWriter(log.Writer(), getAppConfig().CoreLogEnabled)
 
 	if startCore() {
-		// 设置系统代理
-		setCoreProxy()
+		if getAppConfig().ProxyMode == ProxyModeSystem {
+			// 设置系统代理
+			setCoreProxy()
+		}
 	} else {
 		fatal(I.TranSys("msg.error.core.start_failed", nil))
 	}
@@ -128,13 +143,34 @@ func loadCoreConfig() error {
 		return fmt.Errorf(I.TranSys("msg.error.core.config.read_failed", map[string]any{"Error": err}))
 	}
 
-	// 读取配置到临时配置对象
-	tempConfig := new(CoreConfig)
+	// 开始合并应用配置的覆写配置
+	tempAppConfig := getAppConfig()
+	mergedConfig := deepMerge(coreConfigViper.AllSettings(), tempAppConfig.CoreOverride)
+	// 覆写运行模式
+	mergedConfig["mode"] = tempAppConfig.CoreRunMode
+	// 覆写tun配置
+	tun, ok := mergedConfig["tun"].(map[string]any)
+	if !ok {
+		// 不存在 or 类型不对 → 新建
+		tun = make(map[string]any)
+	}
+	// 设置是否启用tun
+	tunEnabled := tempAppConfig.ProxyMode == ProxyModeTun
+	tun["enable"] = tunEnabled
+	mergedConfig["tun"] = tun
 
-	if mixedPort := coreConfigViper.GetInt("mixed-port"); mixedPort != 0 {
+	if tunEnabled && !isRunAsAdmin() {
+		// 启用tun时判断是否有管理员权限，否则核心无法创建tun网卡
+		return fmt.Errorf(I.TranSys("msg.error.core.config.tun_without_admin", nil))
+	}
+
+	// 读取配置到临时配置对象
+	tempConfig := &CoreConfig{}
+
+	if mixedPort := cast.ToInt(mergedConfig["mixed-port"]); mixedPort != 0 {
 		tempConfig.MixedPort = mixedPort
 		tempConfig.HttpProxyPort = mixedPort
-	} else if port := coreConfigViper.GetInt("port"); port != 0 {
+	} else if port := cast.ToInt(mergedConfig["port"]); port != 0 {
 		tempConfig.Port = port
 		tempConfig.HttpProxyPort = port
 	}
@@ -142,25 +178,32 @@ func loadCoreConfig() error {
 		return fmt.Errorf(I.TranSys("msg.error.core.config.missing_port", nil))
 	}
 
-	tempConfig.ExternalController = coreConfigViper.GetString("external-controller")
-	tempConfig.Secret = coreConfigViper.GetString("secret")
-	tempConfig.ExternalUi = coreConfigViper.GetString("external-ui")
-	tempConfig.ExternalUiName = coreConfigViper.GetString("external-ui-name")
+	tempConfig.ExternalController = cast.ToString(mergedConfig["external-controller"])
+	tempConfig.Secret = cast.ToString(mergedConfig["secret"])
+	tempConfig.ExternalUi = cast.ToString(mergedConfig["external-ui"])
+	tempConfig.ExternalUiName = cast.ToString(mergedConfig["external-ui-name"])
 
-	if host, port, err := net.SplitHostPort(tempConfig.ExternalController); err == nil && tempConfig.ExternalUi != "" {
-		// 需要配置了外部控制器API和外部用户UI时才能使用控制面板
-		uiUrlPath := "/ui"
-		if tempConfig.ExternalUiName != "" {
-			// 去除开头/末尾的斜杠
-			uiUrlPath += "/" + strings.Trim(tempConfig.ExternalUiName, "/")
-		}
+	if host, port, err := net.SplitHostPort(tempConfig.ExternalController); err == nil {
+		// 需要配置了外部控制器API时才能使用控制面板
+		tempConfig.ApiEnabled = true
+
 		if host == "" || host == "0.0.0.0" || host == "::" {
 			// 形如 :9090 的格式，监听的是所有地址，管理面板就默认使用本地地址
 			host = "127.0.0.1"
 		}
-		// 本地面板地址
-		tempConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/#/setup?http=true&hostname=%s&port=%s&secret=%s",
-			net.JoinHostPort(host, port), uiUrlPath, host, port, tempConfig.Secret)
+
+		if tempConfig.ExternalUi != "" {
+			// 配置了本地外部用户UI
+			uiUrlPath := "/ui"
+			if tempConfig.ExternalUiName != "" {
+				// 去除开头/末尾的斜杠
+				uiUrlPath += "/" + strings.Trim(tempConfig.ExternalUiName, "/")
+			}
+			// 本地面板地址
+			tempConfig.ExternalUiAddr = fmt.Sprintf("http://%s%s/#/setup?http=true&hostname=%s&port=%s&secret=%s",
+				net.JoinHostPort(host, port), uiUrlPath, host, port, tempConfig.Secret)
+		}
+
 		// 官方面板地址
 		tempConfig.OfficialUiAddr = fmt.Sprintf("https://metacubex.github.io/metacubexd/#/setup?http=true&hostname=%s&port=%s&secret=%s",
 			host, port, tempConfig.Secret)
@@ -174,16 +217,11 @@ func loadCoreConfig() error {
 
 	// 保存到运行配置文件
 	if err := func() error {
-		f, err := os.OpenFile(coreRunConfigPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+		out, err := yaml.Marshal(mergedConfig)
 		if err != nil {
 			return err
 		}
-		defer f.Close()
-
-		if err = coreConfigViper.WriteConfigTo(f); err != nil {
-			return err
-		}
-		return f.Sync()
+		return os.WriteFile(coreRunConfigPath, out, 0644)
 	}(); err != nil {
 		return fmt.Errorf(I.TranSys("msg.error.core.config.write_running_failed", map[string]any{"Error": err}))
 	}

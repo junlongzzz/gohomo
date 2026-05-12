@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"github.com/xishang0128/sysproxy-go/sysproxy"
+	"github.com/UruhaLushia/sysproxy-go/sysproxy"
 )
 
 // 默认代理白名单
@@ -33,7 +33,7 @@ var defaultBypassHosts = []string{
 
 // 获取代理开启状态
 func getProxyEnable() bool {
-	proxyConfig, err := sysproxy.QueryProxySettings("", false)
+	proxyConfig, err := sysproxy.QueryProxySettings(&sysproxy.Options{})
 	if err != nil {
 		return false
 	}
@@ -42,7 +42,7 @@ func getProxyEnable() bool {
 
 // 获取代理服务器地址
 func getProxyServer() string {
-	proxyConfig, err := sysproxy.QueryProxySettings("", false)
+	proxyConfig, err := sysproxy.QueryProxySettings(&sysproxy.Options{})
 	if err != nil {
 		return ""
 	}
@@ -51,7 +51,7 @@ func getProxyServer() string {
 
 // 获取代理白名单
 func getProxyBypass() string {
-	proxyConfig, err := sysproxy.QueryProxySettings("", false)
+	proxyConfig, err := sysproxy.QueryProxySettings(&sysproxy.Options{})
 	if err != nil {
 		return ""
 	}
@@ -66,9 +66,12 @@ func setProxy(enable bool, host, port, bypass string) bool {
 			// 使用默认白名单
 			bypass = strings.Join(defaultBypassHosts, ";")
 		}
-		err = sysproxy.SetProxy(sysproxy.FormatServer(host, port), bypass, "", false)
+		err = sysproxy.SetProxy(&sysproxy.Options{
+			Proxy:  sysproxy.FormatServer(host, port),
+			Bypass: bypass,
+		})
 	} else {
-		err = sysproxy.DisableProxy("", false)
+		err = sysproxy.DisableProxy(&sysproxy.Options{})
 	}
 	return err == nil
 }

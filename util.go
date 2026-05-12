@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -10,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"unsafe"
 
 	"github.com/gen2brain/beeep"
 	"golang.org/x/sys/windows"
@@ -28,13 +32,13 @@ func isProcessRunning(processName string) bool {
 	if processName == "" {
 		return false
 	}
-	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName))
-	output, err := cmd.CombinedOutput()
+	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName), "/FO", "CSV", "/NH")
+	output, err := cmd.Output()
 	if err != nil {
 		log.Println("Error check running:", string(output), err)
 		return false
 	}
-	return strings.Contains(string(output), processName)
+	return strings.Contains(strings.ToLower(string(output)), strings.ToLower(processName))
 }
 
 // 根据 pid 检查进程是否正在运行
@@ -42,8 +46,8 @@ func isProcessRunningByPid(pid int) bool {
 	if pid == 0 {
 		return false
 	}
-	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid))
-	output, err := cmd.CombinedOutput()
+	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH")
+	output, err := cmd.Output()
 	if err != nil {
 		log.Println("Error check running:", string(output), err)
 		return false
@@ -98,22 +102,33 @@ func killProcessByPid(pid int) error {
 
 // 根据进程名称查找进程ID
 func findProcessId(processName string) int {
-	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName))
-	output, err := cmd.CombinedOutput()
+	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName), "/FO", "CSV", "/NH")
+	output, err := cmd.Output()
 	if err != nil {
 		return 0
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines[1:] {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && strings.ToLower(fields[0]) == strings.ToLower(processName) {
-			pid, err := strconv.Atoi(fields[1])
-			if err == nil {
+	reader := csv.NewReader(bytes.NewReader(output))
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return 0
+		}
+
+		if len(record) < 2 {
+			continue
+		}
+
+		if strings.EqualFold(record[0], processName) {
+			if pid, err := strconv.Atoi(record[1]); err == nil {
 				return pid
 			}
 		}
 	}
+
 	return 0
 }
 
@@ -211,7 +226,98 @@ func execCommand(name string, arg ...string) *exec.Cmd {
 
 // 发送通知
 func sendNotification(message string) {
-	if err := beeep.Notify("", message, ""); err != nil {
+	if err := beeep.Notify("", message, appIconBytes); err != nil {
 		log.Printf("Failed to send notification: %v\n", err)
 	}
+}
+
+// 递归合并两个 map
+func deepMerge(target map[string]any, other map[string]any) map[string]any {
+	for key, value := range other {
+
+		switch v := value.(type) {
+
+		// ===== 对象 =====
+		case map[string]any:
+			if strings.HasSuffix(key, "!") {
+				// 后缀带 ! 的直接覆盖
+				k := trimWrap(key[:len(key)-1])
+				target[k] = v
+				continue
+			}
+
+			k := trimWrap(key)
+
+			child, ok := target[k].(map[string]any)
+			if !ok {
+				child = make(map[string]any)
+				target[k] = child
+			}
+
+			deepMerge(child, v)
+
+		// ===== 数组 =====
+		case []any:
+			switch {
+			// +xxx 前插
+			case strings.HasPrefix(key, "+"):
+				k := trimWrap(key[1:])
+				if existing, ok := target[k].([]any); ok {
+					target[k] = append(v, existing...)
+				}
+
+			// xxx+ 后插
+			case strings.HasSuffix(key, "+"):
+				k := trimWrap(key[:len(key)-1])
+				if existing, ok := target[k].([]any); ok {
+					target[k] = append(existing, v...)
+				}
+
+			// xxx 覆盖
+			default:
+				k := trimWrap(key)
+				target[k] = v
+			}
+
+		// ===== 普通值 =====
+		default:
+			target[key] = v
+		}
+	}
+
+	return target
+}
+
+// 去掉字符串首尾的 <>
+func trimWrap(str string) string {
+	if strings.HasPrefix(str, "<") && strings.HasSuffix(str, ">") {
+		return str[1 : len(str)-1]
+	}
+	return str
+}
+
+// 判断当前进程是否以管理员权限运行
+func isRunAsAdmin() bool {
+	var token windows.Token
+	err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token)
+	if err != nil {
+		return false
+	}
+	defer token.Close()
+
+	var elevated uint32
+	var outLen uint32
+
+	err = windows.GetTokenInformation(
+		token,
+		windows.TokenElevation,
+		(*byte)(unsafe.Pointer(&elevated)),
+		uint32(unsafe.Sizeof(elevated)),
+		&outLen,
+	)
+	if err != nil {
+		return false
+	}
+
+	return elevated != 0
 }
