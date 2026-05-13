@@ -13,9 +13,11 @@
 # 覆写配置
 core-override:
   mixed-port: 7895
+  log-level: info     # 原配置不存在时新增字段
 
 # 最终效果
 # mixed-port: 7895
+# log-level: info
 ```
 
 **2. 对象（Map）：默认递归合并，支持强制覆盖**
@@ -102,24 +104,37 @@ core-override:
 
 ```yaml
 # 原配置
-# dns:
-#   nameserver-policy:
-#     +.google.cn:      # 键名本身就以 + 开头
-#       - 8.8.8.8
+dns:
+  nameserver-policy:
+    +.google.cn: # 键名本身就以 + 开头
+      - 8.8.8.8
 
 # 覆写配置示例
 core-override:
   dns:
     nameserver-policy:
-      # 1. 直接覆盖原来的"+.google.cn"项
+      # 1. 直接覆盖原来的 "+.google.cn" 项
       <+.google.cn>:
         - 114.114.114.114
-      # 2. 在“+.google.cn”项前插入新内容
+      # 最终效果
+      # +.google.cn:
+      #   - 114.114.114.114
+
+      # 2. 在原有 "+.google.cn" 项前插入新内容
       +<+.google.cn>:
         - 223.5.5.5
-      # 3. 在“+.google.cn”项后追加新内容
+      # 最终效果
+      # +.google.cn:
+      #   - 223.5.5.5
+      #   - 8.8.8.8
+
+      # 3. 在原有 "+.google.cn" 项后追加新内容
       <+.google.cn>+:
         - 119.29.29.29
+      # 最终效果
+      # +.google.cn:
+      #   - 8.8.8.8
+      #   - 119.29.29.29
 ```
 
 ---
