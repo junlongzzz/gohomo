@@ -117,7 +117,7 @@ func initCore() {
 	// 初始化配置对象
 	coreConfig.Store(&CoreConfig{})
 
-	coreConfigViper = viper.New()
+	coreConfigViper = viper.NewWithOptions(viper.KeyDelimiter("::"))
 	coreConfigViper.SetConfigFile(coreConfigPath)
 	// 加载核心配置
 	if err := loadCoreConfig(); err != nil {

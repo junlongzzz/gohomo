@@ -281,7 +281,8 @@ func deepMerge(target map[string]any, other map[string]any) map[string]any {
 
 		// ===== 普通值 =====
 		default:
-			target[key] = v
+			k := trimWrap(key)
+			target[k] = v
 		}
 	}
 

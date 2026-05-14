@@ -77,7 +77,7 @@ func initAppConfig() {
 		}
 	}
 
-	appConfigViper = viper.New()
+	appConfigViper = viper.NewWithOptions(viper.KeyDelimiter("::"))
 	appConfigViper.SetConfigFile(appConfigPath)
 	if err := appConfigViper.ReadInConfig(); err != nil {
 		log.Println("Failed to read app config:", err)
