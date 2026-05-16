@@ -17,6 +17,11 @@ import (
 
 	"github.com/gen2brain/beeep"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
+)
+
+const (
+	REGKEY_AUTO_START = `SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
 )
 
 var (
@@ -226,7 +231,14 @@ func execCommand(name string, arg ...string) *exec.Cmd {
 
 // 发送通知
 func sendNotification(message string) {
-	if err := beeep.Notify("", message, appIconBytes); err != nil {
+	var icon any
+	iconBytes, _ := appStaticFiles.ReadFile("static/icon.png")
+	if iconBytes != nil {
+		icon = iconBytes
+	} else {
+		icon = ""
+	}
+	if err := beeep.Notify("", message, icon); err != nil {
 		log.Printf("Failed to send notification: %v\n", err)
 	}
 }
@@ -321,4 +333,51 @@ func isRunAsAdmin() bool {
 	}
 
 	return elevated != 0
+}
+
+func setAutoStart(enable bool) error {
+	exePath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	key, err := registry.OpenKey(registry.CURRENT_USER, REGKEY_AUTO_START, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer key.Close()
+
+	if enable {
+		if err = key.SetStringValue(AppName, fmt.Sprintf(`"%s"`, exePath)); err != nil {
+			return err
+		}
+	} else {
+		if err = key.DeleteValue(AppName); err != nil && !errors.Is(err, registry.ErrNotExist) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func isAutoStartEnabled() bool {
+	exePath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+
+	key, err := registry.OpenKey(registry.CURRENT_USER, REGKEY_AUTO_START, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer key.Close()
+
+	val, _, err := key.GetStringValue(AppName)
+	if err != nil {
+		return false
+	}
+
+	expected := fmt.Sprintf(`"%s"`, exePath)
+
+	return strings.EqualFold(val, expected)
 }

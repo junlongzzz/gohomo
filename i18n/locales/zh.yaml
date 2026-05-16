@@ -63,6 +63,11 @@ tray:
       powershell: "PowerShell"
       cmd: "命令提示符"
   app_config: "应用配置"
-  check_update: "检测更新"
-  about: "关于"
+  more:
+    title: "更多"
+    options:
+      auto_start: "开机自启"
+      core_log: "记录核心日志"
+      check_update: "检测更新"
+      about: "关于"
   exit: "退出"

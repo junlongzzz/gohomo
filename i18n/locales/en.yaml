@@ -63,6 +63,11 @@ tray:
       powershell: "PowerShell"
       cmd: "Command Prompt"
   app_config: "App Config"
-  check_update: "Check Update"
-  about: "About"
+  more:
+    title: "More"
+    options:
+      auto_start: "Auto Start"
+      core_log: "Log Core Output"
+      check_update: "Check Update"
+      about: "About"
   exit: "Exit"

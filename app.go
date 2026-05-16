@@ -18,11 +18,38 @@ import (
 
 type AppConfig struct {
 	Schema         string         `yaml:"$schema" mapstructure:"$schema"`                   // 配置文件模板
+	AutoStart      bool           `yaml:"auto-start" mapstructure:"auto-start"`             // 是否开机自动启动
 	ProxyByPass    []string       `yaml:"proxy-by-pass" mapstructure:"proxy-by-pass"`       // 代理白名单地址
 	ProxyMode      string         `yaml:"proxy-mode" mapstructure:"proxy-mode"`             // 代理模式 close-关闭 system-系统 tun-tun(需要管理员权限运行)
 	CoreLogEnabled bool           `yaml:"core-log-enabled" mapstructure:"core-log-enabled"` // 是否启用记录核心日志
 	CoreRunMode    string         `yaml:"core-run-mode" mapstructure:"core-run-mode"`       // 运行模式 rule-规则 global-全局 direct-直连
 	CoreOverride   map[string]any `yaml:"core-override" mapstructure:"core-override"`       // 核心覆盖配置
+}
+
+type AppConfigOption func(*AppConfig)
+
+func WithProxyMode(proxyMode string) AppConfigOption {
+	return func(config *AppConfig) {
+		config.ProxyMode = proxyMode
+	}
+}
+
+func WithCoreRunMode(coreRunMode string) AppConfigOption {
+	return func(config *AppConfig) {
+		config.CoreRunMode = coreRunMode
+	}
+}
+
+func WithCoreLogEnabled(coreLogEnabled bool) AppConfigOption {
+	return func(config *AppConfig) {
+		config.CoreLogEnabled = coreLogEnabled
+	}
+}
+
+func WithAutoStart(autoStart bool) AppConfigOption {
+	return func(config *AppConfig) {
+		config.AutoStart = autoStart
+	}
 }
 
 const (
@@ -51,20 +78,11 @@ var (
 	appConfigPath  string       // 应用配置文件路径
 	appConfig      atomic.Value // store *AppConfig
 	appConfigViper *viper.Viper // 配置文件解析器
-	appIconBytes   []byte       // 程序图标数据
 )
 
 func initAppConfig() {
 	// 设置通知展示程序名称
 	beeep.AppName = AppName
-
-	// 读取程序图标数据
-	iconBytes, err := appStaticFiles.ReadFile("static/icon.ico")
-	if err != nil {
-		log.Println("Failed to read app icon:", err)
-	} else {
-		appIconBytes = iconBytes
-	}
 
 	// 初始化默认配置
 	appConfig.Store(defaultAppConfig())
@@ -84,6 +102,15 @@ func initAppConfig() {
 	} else if err = loadAppConfig(true); err != nil {
 		log.Println("Failed to load app config:", err)
 	}
+
+	enabled := isAutoStartEnabled()
+	wanted := getAppConfig().AutoStart
+	if enabled != wanted {
+		if err := setAutoStart(wanted); err != nil {
+			log.Println("Failed to set auto start:", err)
+		}
+	}
+
 	watchAppConfig()
 }
 
@@ -91,6 +118,7 @@ func initAppConfig() {
 func defaultAppConfig() *AppConfig {
 	return &AppConfig{
 		Schema:         AppGitHubRepo,
+		AutoStart:      false,
 		ProxyByPass:    defaultBypassHosts,
 		ProxyMode:      ProxyModeSystem,
 		CoreLogEnabled: false,
@@ -133,15 +161,15 @@ func writeAppConfig(path string) error {
 	return os.WriteFile(path, out, 0644)
 }
 
-func changeAppConfig(proxyMode string, runMode string) {
-	config := getAppConfig()
-
-	if proxyMode != "" {
-		config.ProxyMode = proxyMode
+func changeAppConfig(options ...AppConfigOption) {
+	if len(options) == 0 {
+		return
 	}
 
-	if runMode != "" {
-		config.CoreRunMode = runMode
+	config := getAppConfig()
+
+	for _, option := range options {
+		option(config)
 	}
 
 	// 配置持久化
@@ -170,6 +198,13 @@ func watchAppConfig() {
 
 		config := getAppConfig()
 
+		// 设置开机自启动
+		if isAutoStartEnabled() != config.AutoStart {
+			if err := setAutoStart(config.AutoStart); err != nil {
+				go messageBoxAlert(AppName, fmt.Sprint(err))
+			}
+		}
+
 		// 重载核心日志配置
 		coreLogWriter.Switch(config.CoreLogEnabled)
 
@@ -183,41 +218,7 @@ func watchAppConfig() {
 			}
 		}
 
-		// 更改托盘代理模式选项
-		proxyModeCloseItem.Uncheck()
-		proxyModeSystemItem.Uncheck()
-		proxyModeTunItem.Uncheck()
-		if config.ProxyMode == ProxyModeSystem {
-			// 设置系统代理
-			setCoreProxy()
-			proxyModeSystemItem.Check()
-		} else {
-			// 关闭系统代理
-			unsetProxy()
-			if config.ProxyMode == ProxyModeTun {
-				proxyModeTunItem.Check()
-			} else if config.ProxyMode == ProxyModeClose {
-				proxyModeCloseItem.Check()
-			}
-		}
-
-		// 更改托盘运行模式选项
-		runModeRuleItem.Uncheck()
-		runModeGlobalItem.Uncheck()
-		runModeDirectItem.Uncheck()
-		switch config.CoreRunMode {
-		case CoreRunModeRule:
-			runModeRuleItem.Check()
-			break
-		case CoreRunModeGlobal:
-			runModeGlobalItem.Check()
-			break
-		case CoreRunModeDirect:
-			runModeDirectItem.Check()
-			break
-		}
-
-		updateTrayTitle(config)
+		updateTrayMenu(config)
 	})
 
 	appConfigViper.WatchConfig()

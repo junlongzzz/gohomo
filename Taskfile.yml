@@ -27,4 +27,4 @@ tasks:
         sh: git describe --tags --abbrev=0
     cmds:
       - go mod tidy
-      - go build -ldflags="-s -w -X main.build={{.GIT_COMMIT}} -X main.version={{.GIT_TAG}} -H=windowsgui" -trimpath -o out/gohomo.exe .
+      - go build -ldflags="-s -w -X main.build={{.GIT_COMMIT}} -X main.version={{.GIT_TAG}} -H=windowsgui" -trimpath -buildvcs=false -o out/gohomo.exe .

@@ -49,7 +49,7 @@ jobs:
         run: |
           go version
           go mod tidy
-          go build -ldflags="${{ env.LDFLAGS }}" -trimpath -o out/gohomo.exe .
+          go build -ldflags="${{ env.LDFLAGS }}" -trimpath -buildvcs=false -o out/gohomo.exe .
           cd out
           zip -r gohomo-${{ matrix.goos }}-${{ matrix.goarch }}-${{ env.COMMIT_TAG }}.zip *
           cd ..
