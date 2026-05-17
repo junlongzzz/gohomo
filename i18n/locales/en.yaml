@@ -34,7 +34,10 @@ msg:
       Core Version: {{.CoreVersion}}
 # 托盘
 tray:
-  start_message: "Gohomo is running in the tray..."
+  start_message: "Ready in the system tray"
+  core_status:
+    running: "Running"
+    stopped: "Stopped"
   proxy_mode:
     title: "Proxy Mode"
     options:
@@ -56,13 +59,13 @@ tray:
       official_ui: "Official UI"
       yacd_ui: "YACD UI"
       zash_ui: "zashboard UI"
+  app_config: "App Config"
   open:
     title: "Open"
     options:
       work_dir: "Work Directory"
       powershell: "PowerShell"
       cmd: "Command Prompt"
-  app_config: "App Config"
   more:
     title: "More"
     options:

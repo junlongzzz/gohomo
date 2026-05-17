@@ -32,14 +32,17 @@ type TrayMenu struct {
 		Direct *systray.MenuItem
 	}
 
+	RestartCore *systray.MenuItem
+
 	Dashboard struct {
 		Menu  *systray.MenuItem
 		Local *systray.MenuItem
 	}
 
 	More struct {
-		AutoStart *systray.MenuItem
-		CoreLog   *systray.MenuItem
+		AutoStart   *systray.MenuItem
+		CoreLog     *systray.MenuItem
+		CheckUpdate *systray.MenuItem
 	}
 }
 
@@ -105,8 +108,11 @@ func onReady() {
 		go changeAppConfig(WithCoreRunMode(CoreRunModeDirect))
 	})
 
-	systray.AddMenuItem(I.TranSys("tray.restart_core", nil), "").Click(func() {
+	trayMenu.RestartCore = systray.AddMenuItem(I.TranSys("tray.restart_core", nil), "")
+	trayMenu.RestartCore.Click(func() {
 		go func() {
+			trayMenu.RestartCore.Disable()
+			defer trayMenu.RestartCore.Enable()
 			// 重新加载核心配置
 			if err := loadCoreConfig(); err != nil {
 				go messageBoxAlert(AppName, fmt.Sprint(err))
@@ -147,6 +153,11 @@ func onReady() {
 	// 分割线
 	systray.AddSeparator()
 
+	systray.AddMenuItem(I.TranSys("tray.app_config", nil), "").Click(func() {
+		// 打开配置文件
+		_ = openBrowser(appConfigPath)
+	})
+
 	openItem := systray.AddMenuItem(I.TranSys("tray.open.title", nil), "")
 	// 打开本地工作目录
 	openItem.AddSubMenuItem(I.TranSys("tray.open.options.work_dir", nil), "").Click(func() {
@@ -185,11 +196,6 @@ func onReady() {
 		openShellFn("cmd.exe")
 	})
 
-	systray.AddMenuItem(I.TranSys("tray.app_config", nil), "").Click(func() {
-		// 打开配置文件
-		_ = openBrowser(appConfigPath)
-	})
-
 	moreItem := systray.AddMenuItem(I.TranSys("tray.more.title", nil), "")
 
 	trayMenu.More.AutoStart = moreItem.AddSubMenuItemCheckbox(I.TranSys("tray.more.options.auto_start", nil), "", false)
@@ -202,8 +208,11 @@ func onReady() {
 		go changeAppConfig(WithCoreLogEnabled(!trayMenu.More.CoreLog.Checked()))
 	})
 
-	moreItem.AddSubMenuItem(I.TranSys("tray.more.options.check_update", nil), "").Click(func() {
+	trayMenu.More.CheckUpdate = moreItem.AddSubMenuItem(I.TranSys("tray.more.options.check_update", nil), "")
+	trayMenu.More.CheckUpdate.Click(func() {
 		go func() {
+			trayMenu.More.CheckUpdate.Disable()
+			defer trayMenu.More.CheckUpdate.Enable()
 			resp, err := http.Get(fmt.Sprintf("%s/releases/latest/download/version.txt", AppGitHubRepo))
 			if err != nil {
 				go messageBoxAlert(AppName, fmt.Sprintf("Failed to check update: %v", err))
@@ -259,8 +268,20 @@ func onReady() {
 	// 托盘点击事件处理函数
 	var trayClickFn = func(menu systray.IMenu) {
 		if menu != nil {
-			// 设置核心版本
+			// 展示核心版本
 			trayMenu.Core.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
+
+			var statusText string
+			if isCoreRunning() {
+				statusText = I.TranSys("tray.core_status.running", nil)
+			} else {
+				statusText = I.TranSys("tray.core_status.stopped", nil)
+			}
+			trayMenu.RestartCore.SetTitle(fmt.Sprintf(
+				"%s [%s]",
+				I.TranSys("tray.restart_core", nil),
+				statusText,
+			))
 
 			// 判断是否展示外部控制面板菜单项
 			tempConfig := getCoreConfig()
@@ -283,6 +304,8 @@ func onReady() {
 	systray.SetOnClick(trayClickFn)
 	// 右键点击托盘
 	systray.SetOnRClick(trayClickFn)
+	// 左键双击托盘
+	systray.SetOnDClick(trayClickFn)
 }
 
 func onExit() {
@@ -309,18 +332,13 @@ func updateTrayMenu(appConfig *AppConfig) {
 	trayMenu.ProxyMode.Close.Uncheck()
 	trayMenu.ProxyMode.System.Uncheck()
 	trayMenu.ProxyMode.Tun.Uncheck()
-	if appConfig.ProxyMode == ProxyModeSystem {
-		// 设置系统代理
-		setCoreProxy()
+	switch appConfig.ProxyMode {
+	case ProxyModeClose:
+		trayMenu.ProxyMode.Close.Check()
+	case ProxyModeSystem:
 		trayMenu.ProxyMode.System.Check()
-	} else {
-		// 关闭系统代理
-		unsetProxy()
-		if appConfig.ProxyMode == ProxyModeTun {
-			trayMenu.ProxyMode.Tun.Check()
-		} else if appConfig.ProxyMode == ProxyModeClose {
-			trayMenu.ProxyMode.Close.Check()
-		}
+	case ProxyModeTun:
+		trayMenu.ProxyMode.Tun.Check()
 	}
 
 	// 更改托盘运行模式选项

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -90,7 +91,7 @@ func initAppConfig() {
 	appConfigPath = filepath.Join(workDir, "gohomo.yaml")
 	if !isFileExist(appConfigPath) {
 		// 不存在，创建默认初始化配置
-		if err := writeAppConfig(appConfigPath); err != nil {
+		if err := writeAppConfig(appConfigPath, getAppConfig()); err != nil {
 			log.Println("Failed to create app config:", err)
 		}
 	}
@@ -128,19 +129,19 @@ func defaultAppConfig() *AppConfig {
 }
 
 func loadAppConfig(write bool) error {
-	// 拷贝内存中配置
 	tempConfig := defaultAppConfig()
 	// 读取本地配置进行覆盖
 	if err := appConfigViper.Unmarshal(tempConfig); err != nil {
 		return err
 	}
-	// 转为小写
-	tempConfig.ProxyMode = strings.ToLower(tempConfig.ProxyMode)
-	tempConfig.CoreRunMode = strings.ToLower(tempConfig.CoreRunMode)
+
+	normalizeAppConfig(tempConfig)
+	migrateAppConfig(tempConfig)
+
 	appConfig.Store(tempConfig)
 
 	if write {
-		if err := writeAppConfig(appConfigPath); err != nil {
+		if err := writeAppConfig(appConfigPath, tempConfig); err != nil {
 			log.Println("Failed to write app config:", err)
 		}
 	}
@@ -149,12 +150,36 @@ func loadAppConfig(write bool) error {
 	return nil
 }
 
+func normalizeAppConfig(config *AppConfig) {
+	config.ProxyMode = strings.ToLower(strings.TrimSpace(config.ProxyMode))
+	config.CoreRunMode = strings.ToLower(strings.TrimSpace(config.CoreRunMode))
+}
+
+func migrateAppConfig(config *AppConfig) {
+	// 修复非法值
+	switch config.ProxyMode {
+	case ProxyModeClose,
+		ProxyModeSystem,
+		ProxyModeTun:
+	default:
+		config.ProxyMode = ProxyModeSystem
+	}
+
+	switch config.CoreRunMode {
+	case CoreRunModeRule,
+		CoreRunModeGlobal,
+		CoreRunModeDirect:
+	default:
+		config.CoreRunMode = CoreRunModeRule
+	}
+}
+
 func getAppConfig() *AppConfig {
 	return appConfig.Load().(*AppConfig)
 }
 
-func writeAppConfig(path string) error {
-	out, err := yaml.Marshal(getAppConfig())
+func writeAppConfig(path string, config *AppConfig) error {
+	out, err := yaml.Marshal(config)
 	if err != nil {
 		return err
 	}
@@ -166,14 +191,18 @@ func changeAppConfig(options ...AppConfigOption) {
 		return
 	}
 
-	config := getAppConfig()
+	// 获取当前配置并复制一份，避免直接修改全局正在使用的指针
+	currentConfig := getAppConfig()
+	newConfig := *currentConfig
 
 	for _, option := range options {
-		option(config)
+		option(&newConfig)
 	}
 
 	// 配置持久化
-	_ = writeAppConfig(appConfigPath)
+	if err := writeAppConfig(appConfigPath, &newConfig); err != nil {
+		log.Println("Failed to write app config:", err)
+	}
 }
 
 func watchAppConfig() {
@@ -191,34 +220,51 @@ func watchAppConfig() {
 		}
 		last = now
 
+		oldConfig := getAppConfig()
+
 		if err := loadAppConfig(false); err != nil {
 			log.Println("Failed to reload app config:", err)
 			return
 		}
 
-		config := getAppConfig()
+		newConfig := getAppConfig()
 
 		// 设置开机自启动
-		if isAutoStartEnabled() != config.AutoStart {
-			if err := setAutoStart(config.AutoStart); err != nil {
+		if oldConfig.AutoStart != newConfig.AutoStart {
+			if err := setAutoStart(newConfig.AutoStart); err != nil {
 				go messageBoxAlert(AppName, fmt.Sprint(err))
 			}
 		}
 
 		// 重载核心日志配置
-		coreLogWriter.Switch(config.CoreLogEnabled)
+		if oldConfig.CoreLogEnabled != newConfig.CoreLogEnabled {
+			coreLogWriter.Switch(newConfig.CoreLogEnabled)
+		}
 
 		// 重新加载核心配置
-		if err := loadCoreConfig(); err != nil {
-			go messageBoxAlert(AppName, fmt.Sprint(err))
-		} else {
-			// 重启核心
-			if !restartCore() {
-				go messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
+		if oldConfig.ProxyMode != newConfig.ProxyMode ||
+			oldConfig.CoreRunMode != newConfig.CoreRunMode ||
+			!reflect.DeepEqual(oldConfig.ProxyByPass, newConfig.ProxyByPass) ||
+			!reflect.DeepEqual(oldConfig.CoreOverride, newConfig.CoreOverride) {
+			if err := loadCoreConfig(); err != nil {
+				go messageBoxAlert(AppName, fmt.Sprint(err))
+			} else {
+				// 重启核心
+				if !restartCore() {
+					go messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
+				}
+			}
+
+			if newConfig.ProxyMode == ProxyModeSystem {
+				// 设置系统代理
+				setCoreProxy()
+			} else {
+				// 关闭系统代理
+				unsetProxy()
 			}
 		}
 
-		updateTrayMenu(config)
+		updateTrayMenu(newConfig)
 	})
 
 	appConfigViper.WatchConfig()

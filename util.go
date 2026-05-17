@@ -238,7 +238,7 @@ func sendNotification(message string) {
 	} else {
 		icon = ""
 	}
-	if err := beeep.Notify("", message, icon); err != nil {
+	if err := beeep.Notify(AppName, message, icon); err != nil {
 		log.Printf("Failed to send notification: %v\n", err)
 	}
 }

@@ -34,7 +34,10 @@ msg:
       核心版本: {{.CoreVersion}}
 # 托盘
 tray:
-  start_message: "Gohomo 正运行在系统托盘内..."
+  start_message: "已在系统托盘中就绪"
+  core_status:
+    running: "运行中"
+    stopped: "已停止"
   proxy_mode:
     title: "代理模式"
     options:
@@ -56,13 +59,13 @@ tray:
       official_ui: "官方 UI"
       yacd_ui: "YACD UI"
       zash_ui: "zashboard UI"
+  app_config: "应用配置"
   open:
     title: "打开"
     options:
       work_dir: "工作目录"
       powershell: "PowerShell"
       cmd: "命令提示符"
-  app_config: "应用配置"
   more:
     title: "更多"
     options:
