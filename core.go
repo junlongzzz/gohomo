@@ -269,12 +269,8 @@ func stopCore() bool {
 
 	// 结束进程
 	if err := killProcessGracefully(coreName); err != nil {
-		// 优雅停止失败，直接强制结束进程
 		log.Println("Failed to stop core gracefully:", err)
-		if err = killProcess(coreName); err != nil {
-			log.Println("Failed to stop core:", err)
-			return false
-		}
+		return false
 	}
 
 	log.Println("Core stopped")

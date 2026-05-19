@@ -267,45 +267,47 @@ func onReady() {
 
 	// 托盘点击事件处理函数
 	var trayClickFn = func(menu systray.IMenu) {
-		if menu != nil {
-			// 展示核心版本
-			trayMenu.Core.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
+		if menu == nil {
+			return
+		}
 
-			var statusText string
-			if isCoreRunning() {
-				statusText = I.TranSys("tray.core_status.running", nil)
+		// 展示核心版本
+		trayMenu.Core.SetTitle(fmt.Sprintf("%s %s", CoreShowName, getCoreVersion()))
+
+		var statusText string
+		if isCoreRunning() {
+			statusText = I.TranSys("tray.core_status.running", nil)
+		} else {
+			statusText = I.TranSys("tray.core_status.stopped", nil)
+		}
+		trayMenu.RestartCore.SetTitle(fmt.Sprintf(
+			"%s [%s]",
+			I.TranSys("tray.restart_core", nil),
+			statusText,
+		))
+
+		// 判断是否展示外部控制面板菜单项
+		tempConfig := getCoreConfig()
+		if tempConfig.ApiEnabled {
+			trayMenu.Dashboard.Menu.Show()
+			// 判断是否展示本地控制面板菜单项
+			if tempConfig.ExternalUiAddr != "" {
+				trayMenu.Dashboard.Local.Show()
 			} else {
-				statusText = I.TranSys("tray.core_status.stopped", nil)
+				trayMenu.Dashboard.Local.Hide()
 			}
-			trayMenu.RestartCore.SetTitle(fmt.Sprintf(
-				"%s [%s]",
-				I.TranSys("tray.restart_core", nil),
-				statusText,
-			))
+		} else {
+			trayMenu.Dashboard.Menu.Hide()
+		}
 
-			// 判断是否展示外部控制面板菜单项
-			tempConfig := getCoreConfig()
-			if tempConfig.ApiEnabled {
-				trayMenu.Dashboard.Menu.Show()
-				// 判断是否展示本地控制面板菜单项
-				if tempConfig.ExternalUiAddr != "" {
-					trayMenu.Dashboard.Local.Show()
-				} else {
-					trayMenu.Dashboard.Local.Hide()
-				}
-			} else {
-				trayMenu.Dashboard.Menu.Hide()
-			}
-
-			_ = menu.ShowMenu()
+		if err := menu.ShowMenu(); err != nil {
+			log.Println("Failed to show menu:", err)
 		}
 	}
 	// 左键点击托盘时显示菜单
 	systray.SetOnClick(trayClickFn)
 	// 右键点击托盘
 	systray.SetOnRClick(trayClickFn)
-	// 左键双击托盘
-	systray.SetOnDClick(trayClickFn)
 }
 
 func onExit() {

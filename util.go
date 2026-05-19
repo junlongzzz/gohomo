@@ -1,149 +1,212 @@
 package main
 
 import (
-	"bytes"
-	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/gen2brain/beeep"
+	"github.com/shirou/gopsutil/v4/process"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
 const (
-	REGKEY_AUTO_START = `SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
+	RegKeyAutoStart = `SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
 )
 
 var (
-	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
+	modKernel32 = windows.NewLazySystemDLL("kernel32.dll")
 
-	attachConsole            = kernel32.NewProc("AttachConsole")
-	setConsoleCtrlHandler    = kernel32.NewProc("SetConsoleCtrlHandler")
-	generateConsoleCtrlEvent = kernel32.NewProc("GenerateConsoleCtrlEvent")
+	procFreeConsole              = modKernel32.NewProc("FreeConsole")
+	procAttachConsole            = modKernel32.NewProc("AttachConsole")
+	procSetConsoleCtrlHandler    = modKernel32.NewProc("SetConsoleCtrlHandler")
+	procGenerateConsoleCtrlEvent = modKernel32.NewProc("GenerateConsoleCtrlEvent")
 )
 
-// 使用 tasklist 命令检查进程是否正在运行
-func isProcessRunning(processName string) bool {
+// 查找指定名称的所有进程
+func findProcessesByName(processName string) ([]*process.Process, error) {
 	if processName == "" {
-		return false
+		return nil, fmt.Errorf("process name is empty")
 	}
-	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName), "/FO", "CSV", "/NH")
-	output, err := cmd.Output()
+
+	processes, err := process.Processes()
 	if err != nil {
-		log.Println("Error check running:", string(output), err)
-		return false
-	}
-	return strings.Contains(strings.ToLower(string(output)), strings.ToLower(processName))
-}
-
-// 根据 pid 检查进程是否正在运行
-func isProcessRunningByPid(pid int) bool {
-	if pid == 0 {
-		return false
-	}
-	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH")
-	output, err := cmd.Output()
-	if err != nil {
-		log.Println("Error check running:", string(output), err)
-		return false
-	}
-	return strings.Contains(string(output), fmt.Sprintf("%d", pid))
-}
-
-// 使用 taskkill 命令杀进程，支持 * 号模糊匹配
-func killProcess(processName string) error {
-	if processName == "" {
-		return fmt.Errorf("process name is empty")
-	}
-	cmd := execCommand("taskkill", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName), "/F")
-	return cmd.Run()
-}
-
-// 优雅的退出进程
-// https://github.com/GUI-for-Cores/GUI.for.Clash/blob/main/bridge/exec_windows.go#L21
-func killProcessGracefully(processName string) error {
-	process, err := findProcess(processName)
-	if err != nil {
-		return err
-	}
-	// 尝试附加到控制台
-	call, _, err := attachConsole.Call(uintptr(process.Pid))
-	if call == 0 && !errors.Is(err, syscall.ERROR_ACCESS_DENIED) {
-		return err
-	}
-	// 尝试设置控制台处理程序
-	call, _, err = setConsoleCtrlHandler.Call(0, 1)
-	if call == 0 {
-		return err
-	}
-	// 发送 CTRL_BREAK_EVENT 信号，因为 windows 不支持信号
-	call, _, err = generateConsoleCtrlEvent.Call(syscall.CTRL_BREAK_EVENT, uintptr(process.Pid))
-	if call == 0 {
-		return err
-	}
-	// 等待进程退出
-	_, _ = process.Wait()
-	return nil
-}
-
-// 根据 pid 杀进程
-func killProcessByPid(pid int) error {
-	if pid <= 0 {
-		return fmt.Errorf("pid is invalid")
-	}
-	cmd := execCommand("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F")
-	return cmd.Run()
-}
-
-// 根据进程名称查找进程ID
-func findProcessId(processName string) int {
-	cmd := execCommand("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", processName), "/FO", "CSV", "/NH")
-	output, err := cmd.Output()
-	if err != nil {
-		return 0
+		return nil, err
 	}
 
-	reader := csv.NewReader(bytes.NewReader(output))
-	for {
-		record, err := reader.Read()
+	var result []*process.Process
+	for _, p := range processes {
+		name, err := p.Name()
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return 0
-		}
-
-		if len(record) < 2 {
 			continue
 		}
 
-		if strings.EqualFold(record[0], processName) {
-			if pid, err := strconv.Atoi(record[1]); err == nil {
-				return pid
-			}
+		if strings.EqualFold(name, processName) {
+			result = append(result, p)
 		}
 	}
+	return result, nil
+}
 
+// 检查进程是否运行
+func isProcessRunning(processName string) bool {
+	processes, _ := process.Processes()
+	for _, p := range processes {
+		name, err := p.Name()
+		if err == nil && strings.EqualFold(name, processName) {
+			return true
+		}
+	}
+	return false
+}
+
+// 检查进程是否运行（根据进程id）
+func isProcessRunningByPid(pid int32) bool {
+	if pid <= 0 {
+		return false
+	}
+
+	exists, err := process.PidExists(pid)
+	if err != nil {
+		return false
+	}
+	return exists
+}
+
+// 根据进程名称查找进程id
+func findProcessId(processName string) int32 {
+	processes, _ := process.Processes()
+	for _, p := range processes {
+		name, err := p.Name()
+		if err == nil && strings.EqualFold(name, processName) {
+			return p.Pid
+		}
+	}
 	return 0
 }
 
-// 根据名称查找进程
-func findProcess(processName string) (*os.Process, error) {
-	processId := findProcessId(processName)
-	if processId == 0 {
-		return nil, fmt.Errorf("process %s not found", processName)
+// 根据进程名称查找进程
+func findProcess(processName string) (*process.Process, error) {
+	processes, _ := process.Processes()
+	for _, p := range processes {
+		name, err := p.Name()
+		if err == nil && strings.EqualFold(name, processName) {
+			return p, nil
+		}
 	}
-	return os.FindProcess(processId)
+	return nil, fmt.Errorf("process %s not found", processName)
+}
+
+// 根据进程名称强制结束进程
+func killProcess(processName string) error {
+	processes, err := findProcessesByName(processName)
+	if err != nil {
+		return err
+	}
+
+	if len(processes) == 0 {
+		// 进程本就不存在，视作成功
+		return nil
+	}
+
+	var lastErr error
+	for _, p := range processes {
+		if err = p.Kill(); err != nil {
+			lastErr = err
+			log.Printf("force kill process %d failed: %v\n", p.Pid, err)
+		}
+	}
+	return lastErr
+}
+
+// 根据进程id强制结束进程
+func killProcessByPid(pid int32) error {
+	if pid <= 0 {
+		return fmt.Errorf("pid is invalid")
+	}
+
+	p, err := process.NewProcess(pid)
+	if err != nil {
+		return err
+	}
+	return p.Kill()
+}
+
+// 尝试优雅的结束进程，如未成功则强制结束
+func killProcessGracefully(processName string) error {
+	pid := findProcessId(processName)
+	if pid == 0 {
+		// 进程不存在，视作成功
+		return nil
+	}
+
+	p, err := os.FindProcess(int(pid))
+	if err != nil {
+		return err
+	}
+
+	if err = sendCtrlBreakEvent(pid); err != nil {
+		log.Printf("send CTRL_BREAK to %d failed, force kill: %v\n", pid, err)
+		return p.Kill() // 强制结束
+	}
+
+	// 等待进程退出，超时后强制结束
+	timeout := time.After(5 * time.Second)
+	done := make(chan error, 1)
+	go func() {
+		_, waitErr := p.Wait()
+		done <- waitErr
+	}()
+
+	select {
+	case <-timeout:
+		log.Printf("graceful shutdown pid %d timeout, force kill\n", pid)
+		return p.Kill() // 超时未退出，强制结束
+	case waitErr := <-done:
+		return waitErr
+	}
+}
+
+// 参考：https://github.com/GUI-for-Cores/GUI.for.Clash/blob/main/bridge/exec_windows.go
+func sendCtrlBreakEvent(pid int32) error {
+	// 先脱离当前 console
+	ret, _, err := procFreeConsole.Call()
+	if ret == 0 && !errors.Is(err, windows.ERROR_INVALID_HANDLE) {
+		return err
+	}
+
+	// 恢复父控制台
+	defer procAttachConsole.Call(uintptr(^uint32(0)))
+
+	// 尝试附加到控制台
+	ret, _, err = procAttachConsole.Call(uintptr(pid))
+	if ret == 0 && !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		return err
+	}
+
+	// 尝试设置控制台处理程序，让当前进程忽略 Ctrl 事件（防止误伤自己）
+	ret, _, err = procSetConsoleCtrlHandler.Call(0, 1)
+	if ret == 0 {
+		return err
+	}
+	// 恢复当前进程对 Ctrl 事件的响应
+	defer procSetConsoleCtrlHandler.Call(0, 0)
+
+	// 发送 CTRL_BREAK_EVENT 事件，因为 windows 不支持信号
+	ret, _, err = procGenerateConsoleCtrlEvent.Call(windows.CTRL_BREAK_EVENT, uintptr(pid))
+	if ret == 0 {
+		return err
+	}
+
+	return nil
 }
 
 // 判断文件是否存在
@@ -341,7 +404,7 @@ func setAutoStart(enable bool) error {
 		return err
 	}
 
-	key, err := registry.OpenKey(registry.CURRENT_USER, REGKEY_AUTO_START, registry.QUERY_VALUE|registry.SET_VALUE)
+	key, err := registry.OpenKey(registry.CURRENT_USER, RegKeyAutoStart, registry.QUERY_VALUE|registry.SET_VALUE)
 	if err != nil {
 		return err
 	}
@@ -366,7 +429,7 @@ func isAutoStartEnabled() bool {
 		return false
 	}
 
-	key, err := registry.OpenKey(registry.CURRENT_USER, REGKEY_AUTO_START, registry.QUERY_VALUE)
+	key, err := registry.OpenKey(registry.CURRENT_USER, RegKeyAutoStart, registry.QUERY_VALUE)
 	if err != nil {
 		return false
 	}
