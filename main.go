@@ -17,6 +17,7 @@ import (
 var (
 	build   string // 编译时的git提交哈希
 	version string // 程序版本
+
 	workDir string // 工作目录
 	logDir  string // 日志目录
 
@@ -88,7 +89,7 @@ func fatal(v ...any) {
 	log.Println(v...)
 	if lockFileHandle != 0 {
 		// 文件锁已经初始化表示程序已正常运行，退出需要清理
-		unsetProxy()
+		unsetCoreProxy()
 		stopCore()
 	}
 	messageBoxAlert(AppName, fmt.Sprintln(v...))

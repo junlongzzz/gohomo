@@ -2,11 +2,14 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -53,11 +56,17 @@ func WithAutoStart(autoStart bool) AppConfigOption {
 	}
 }
 
+type GitHubRelease struct {
+	TagName string `json:"tag_name"`
+}
+
 const (
 	// AppName 程序名称
 	AppName = "Gohomo"
 	// AppGitHubRepo 程序GitHub仓库
 	AppGitHubRepo = "https://github.com/junlongzzz/gohomo"
+	// AppGitHubRepoApi 程序GitHub仓库API接口地址前缀
+	AppGitHubRepoApi = "https://api.github.com/repos/junlongzzz/gohomo"
 	// CoreShowName 核心名称
 	CoreShowName = "Mihomo"
 	// CoreGitHubRepo 核心GitHub仓库
@@ -260,7 +269,7 @@ func watchAppConfig() {
 				setCoreProxy()
 			} else {
 				// 关闭系统代理
-				unsetProxy()
+				unsetCoreProxy()
 			}
 		}
 
@@ -268,4 +277,32 @@ func watchAppConfig() {
 	})
 
 	appConfigViper.WatchConfig()
+}
+
+func checkAppUpdate() {
+	resp, err := http.Get(fmt.Sprintf("%s/releases/latest", AppGitHubRepoApi))
+	if err != nil {
+		go messageBoxAlert(AppName, fmt.Sprintf("Failed to check update: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	var release GitHubRelease
+	if err = json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		go messageBoxAlert(AppName, fmt.Sprintf("Failed to read response: %v", err))
+		return
+	}
+
+	latestVersion := release.TagName
+	if latestVersion != "" && latestVersion != version {
+		go func() {
+			if messageBoxConfirm(AppName, I.TranSys("msg.info.update_available", map[string]any{"Version": latestVersion})) {
+				downloadUrl := fmt.Sprintf("%s/releases/download/%s/gohomo-%s-%s-%s.zip", AppGitHubRepo, latestVersion, runtime.GOOS, runtime.GOARCH, latestVersion)
+				log.Println("Update package download url:", downloadUrl)
+				_ = openBrowser(downloadUrl)
+			}
+		}()
+	} else {
+		go messageBoxAlert(AppName, I.TranSys("msg.info.no_update", nil))
+	}
 }

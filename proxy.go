@@ -78,5 +78,5 @@ func setProxy(enable bool, host, port, bypass string) bool {
 
 // 取消代理
 func unsetProxy() bool {
-	return setProxy(false, "", "", "")
+	return sysproxy.DisableProxy(&sysproxy.Options{}) == nil
 }

@@ -2,12 +2,9 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 
 	"github.com/energye/systray"
@@ -46,10 +43,7 @@ type TrayMenu struct {
 	}
 }
 
-var (
-	trayMenu     TrayMenu
-	versionRegex = regexp.MustCompile(`^\d{8}$`) // 匹配该应用版本号正则
-)
+var trayMenu TrayMenu
 
 // 初始化系统托盘
 func initSystray() {
@@ -124,7 +118,7 @@ func onReady() {
 					setCoreProxy()
 				}
 			} else {
-				unsetProxy()
+				unsetCoreProxy()
 				go messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
 			}
 		}()
@@ -158,19 +152,24 @@ func onReady() {
 		_ = openBrowser(appConfigPath)
 	})
 
-	openItem := systray.AddMenuItem(I.TranSys("tray.open.title", nil), "")
+	openMenu := systray.AddMenuItem(I.TranSys("tray.open.title", nil), "")
 	// 打开本地工作目录
-	openItem.AddSubMenuItem(I.TranSys("tray.open.options.work_dir", nil), "").Click(func() {
+	openMenu.AddSubMenuItem(I.TranSys("tray.open.options.work_dir", nil), "").Click(func() {
 		_ = openDirectory(workDir)
 	})
 
 	var openShellFn = func(shell string) {
 		cmd := exec.Command(shell)
 		cmd.Dir = workDir
-		// 设置代理环境变量
-		cmd.Env = append(os.Environ(),
-			fmt.Sprintf("HTTP_PROXY=http://%s", getProxyServer()),
-			fmt.Sprintf("HTTPS_PROXY=http://%s", getProxyServer()))
+		cmd.Env = os.Environ()
+		if proxyServer := getProxyServer(); proxyServer != "" {
+			// 设置代理环境变量
+			cmd.Env = append(cmd.Env,
+				fmt.Sprintf("HTTP_PROXY=http://%s", proxyServer),
+				fmt.Sprintf("HTTPS_PROXY=http://%s", proxyServer),
+				fmt.Sprintf("http_proxy=http://%s", proxyServer),
+				fmt.Sprintf("https_proxy=http://%s", proxyServer))
+		}
 		cmd.SysProcAttr = &windows.SysProcAttr{
 			CreationFlags: windows.CREATE_NEW_CONSOLE | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_NEW_PROCESS_GROUP,
 		}
@@ -182,7 +181,7 @@ func onReady() {
 		}
 	}
 	// 打开powershell
-	openItem.AddSubMenuItem(I.TranSys("tray.open.options.powershell", nil), "").Click(func() {
+	openMenu.AddSubMenuItem(I.TranSys("tray.open.options.powershell", nil), "").Click(func() {
 		ps := "pwsh.exe"
 		// 先判断 pwsh.exe 是否在环境变量内存在
 		if _, err := exec.LookPath(ps); err != nil {
@@ -192,56 +191,32 @@ func onReady() {
 		openShellFn(ps)
 	})
 	// 打开命令行
-	openItem.AddSubMenuItem(I.TranSys("tray.open.options.cmd", nil), "").Click(func() {
+	openMenu.AddSubMenuItem(I.TranSys("tray.open.options.cmd", nil), "").Click(func() {
 		openShellFn("cmd.exe")
 	})
 
-	moreItem := systray.AddMenuItem(I.TranSys("tray.more.title", nil), "")
+	moreMenu := systray.AddMenuItem(I.TranSys("tray.more.title", nil), "")
 
-	trayMenu.More.AutoStart = moreItem.AddSubMenuItemCheckbox(I.TranSys("tray.more.options.auto_start", nil), "", false)
+	trayMenu.More.AutoStart = moreMenu.AddSubMenuItemCheckbox(I.TranSys("tray.more.options.auto_start", nil), "", false)
 	trayMenu.More.AutoStart.Click(func() {
 		go changeAppConfig(WithAutoStart(!trayMenu.More.AutoStart.Checked()))
 	})
 
-	trayMenu.More.CoreLog = moreItem.AddSubMenuItemCheckbox(I.TranSys("tray.more.options.core_log", nil), "", false)
+	trayMenu.More.CoreLog = moreMenu.AddSubMenuItemCheckbox(I.TranSys("tray.more.options.core_log", nil), "", false)
 	trayMenu.More.CoreLog.Click(func() {
 		go changeAppConfig(WithCoreLogEnabled(!trayMenu.More.CoreLog.Checked()))
 	})
 
-	trayMenu.More.CheckUpdate = moreItem.AddSubMenuItem(I.TranSys("tray.more.options.check_update", nil), "")
+	trayMenu.More.CheckUpdate = moreMenu.AddSubMenuItem(I.TranSys("tray.more.options.check_update", nil), "")
 	trayMenu.More.CheckUpdate.Click(func() {
 		go func() {
 			trayMenu.More.CheckUpdate.Disable()
 			defer trayMenu.More.CheckUpdate.Enable()
-			resp, err := http.Get(fmt.Sprintf("%s/releases/latest/download/version.txt", AppGitHubRepo))
-			if err != nil {
-				go messageBoxAlert(AppName, fmt.Sprintf("Failed to check update: %v", err))
-				return
-			}
-			defer resp.Body.Close()
-
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				go messageBoxAlert(AppName, fmt.Sprintf("Failed to read response: %v", err))
-				return
-			}
-			latestVersion := string(body)
-			if latestVersion != "" && versionRegex.MatchString(latestVersion) && latestVersion != version {
-				go func() {
-					if messageBoxConfirm(AppName, I.TranSys("msg.info.update_available", map[string]any{"Version": latestVersion})) {
-						downloadUrl := fmt.Sprintf("%s/releases/download/%s/gohomo-%s-%s-%s.zip", AppGitHubRepo,
-							latestVersion, runtime.GOOS, runtime.GOARCH, latestVersion)
-						log.Println("Update package download url:", downloadUrl)
-						_ = openBrowser(downloadUrl)
-					}
-				}()
-			} else {
-				go messageBoxAlert(AppName, I.TranSys("msg.info.no_update", nil))
-			}
+			checkAppUpdate()
 		}()
 	})
 
-	moreItem.AddSubMenuItem(I.TranSys("tray.more.options.about", nil), "").Click(func() {
+	moreMenu.AddSubMenuItem(I.TranSys("tray.more.options.about", nil), "").Click(func() {
 		about := I.TranSys("msg.info.about", map[string]any{
 			"Name":        AppName,
 			"Description": "Wrapper for Mihomo written in Golang.",
@@ -312,7 +287,7 @@ func onReady() {
 
 func onExit() {
 	// 退出程序后的处理操作
-	unsetProxy()
+	unsetCoreProxy()
 	stopCore()
 	os.Exit(0)
 }

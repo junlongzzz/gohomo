@@ -295,12 +295,21 @@ func setCoreProxy() bool {
 		// 设置环境变量
 		_ = os.Setenv("HTTP_PROXY", proxyUrl)
 		_ = os.Setenv("HTTPS_PROXY", proxyUrl)
+		_ = os.Setenv("http_proxy", proxyUrl)
+		_ = os.Setenv("https_proxy", proxyUrl)
 	} else {
 		// 恢复环境变量
 		_ = os.Unsetenv("HTTP_PROXY")
 		_ = os.Unsetenv("HTTPS_PROXY")
+		_ = os.Unsetenv("http_proxy")
+		_ = os.Unsetenv("https_proxy")
 	}
 	return set
+}
+
+// 取消core代理
+func unsetCoreProxy() bool {
+	return unsetProxy()
 }
 
 // 获取core版本号
