@@ -23,6 +23,8 @@ var (
 
 	I *i18n.I18n // i18n
 
+	logFilePath    string         // 当前正在写入的日志文件路径，防止被清理
+	lockFilePath   string         // 单实例锁文件路径
 	lockFileHandle windows.Handle // 锁文件句柄
 )
 
@@ -35,7 +37,7 @@ func main() {
 
 	// 检查是否为单实例
 	checkSingleInstance()
-	defer windows.CloseHandle(lockFileHandle)
+	defer releaseSingleInstanceLock()
 
 	// 获取当前程序的执行所在目录
 	executable, err := os.Executable()
@@ -47,14 +49,14 @@ func main() {
 	logDir = filepath.Join(workDir, "logs")
 	if !isFileExist(logDir) {
 		// 日志目录不存在则自动创建
-		if err := os.Mkdir(logDir, 0755); err != nil {
+		if err = os.MkdirAll(logDir, 0755); err != nil {
 			fatal("Failed to create log directory:", err)
 		}
 	}
+	// 使用当天日期作为日志文件名
+	logFilePath = filepath.Join(logDir, fmt.Sprintf("%s.log", time.Now().Format("2006-01-02")))
 	// 删除7天前的日志文件
 	go delOutdatedLogs(7 * 24 * time.Hour)
-	// 使用当天日期作为日志文件名
-	logFilePath := filepath.Join(logDir, fmt.Sprintf("%s.log", time.Now().Format("2006-01-02")))
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		fatal("Failed to open log file:", err)
@@ -73,7 +75,7 @@ func main() {
 		}
 	}()
 
-	log.Println(fmt.Sprintf("Version: %s (%s)", version, build))
+	log.Printf("Version: %s (%s)\n", version, build)
 	log.Println("Work directory:", workDir)
 
 	// 初始化应用配置
@@ -92,16 +94,17 @@ func fatal(v ...any) {
 		unsetCoreProxy()
 		stopCore()
 	}
+	releaseSingleInstanceLock()
 	messageBoxAlert(AppName, fmt.Sprintln(v...))
-	// 退出程序
-	os.Exit(0)
+	// 错误退出码，方便外部脚本/调度器判断
+	os.Exit(1)
 }
 
 // 检查是否为单实例
 func checkSingleInstance() {
-	lockPath := filepath.Join(os.TempDir(), "gohomo.pid")
+	lockFilePath = filepath.Join(os.TempDir(), "gohomo.pid")
 	// 将路径转换为 UTF16
-	pathPtr, _ := windows.UTF16PtrFromString(lockPath)
+	pathPtr, _ := windows.UTF16PtrFromString(lockFilePath)
 
 	// 尝试创建/打开文件
 	// FILE_SHARE_READ: 允许别人读
@@ -128,6 +131,20 @@ func checkSingleInstance() {
 	lockFileHandle = handle
 }
 
+// releaseSingleInstanceLock 释放单实例锁句柄并清理 pid 文件，可重复调用
+func releaseSingleInstanceLock() {
+	if lockFileHandle == 0 {
+		// 未持有锁（例如第二个实例启动失败走 fatal 路径），不能去动属于其他实例的 pid 文件
+		return
+	}
+	_ = windows.CloseHandle(lockFileHandle)
+	lockFileHandle = 0
+	if lockFilePath != "" {
+		// 句柄已关闭（独占打开时无法删除），此时才能安全清理 pid 文件
+		_ = os.Remove(lockFilePath)
+	}
+}
+
 // 删除清理指定过期时长的日志文件
 func delOutdatedLogs(age time.Duration) {
 	_ = filepath.WalkDir(logDir, func(path string, info os.DirEntry, err error) error {
@@ -142,12 +159,16 @@ func delOutdatedLogs(age time.Duration) {
 		if !strings.HasSuffix(info.Name(), ".log") {
 			return nil
 		}
-		// 获取文件创建时间
+		// 跳过当前正在使用的日志文件
+		if logFilePath != "" && strings.EqualFold(path, logFilePath) {
+			return nil
+		}
+		// 获取文件修改时间
 		fileInfo, err := info.Info()
 		if err != nil {
 			return err
 		}
-		fileAge := time.Now().Sub(fileInfo.ModTime())
+		fileAge := time.Since(fileInfo.ModTime())
 		if fileAge > age {
 			// 删除过期文件
 			_ = os.Remove(path)

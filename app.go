@@ -1,7 +1,7 @@
 package main
 
 import (
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -82,46 +83,51 @@ const (
 )
 
 var (
-	//go:embed static/*
-	appStaticFiles embed.FS // 嵌入静态文件
+	//go:embed static/icon.ico
+	trayIcon []byte // 托盘图标
+	//go:embed static/icon.png
+	notificationIcon []byte // 通知图标
 
-	appConfigPath  string       // 应用配置文件路径
-	appConfig      atomic.Value // store *AppConfig
-	appConfigViper *viper.Viper // 配置文件解析器
+	appConfigPath    string                    // 应用配置文件路径
+	appConfig        atomic.Pointer[AppConfig] // 当前生效的应用配置
+	appConfigViper   *viper.Viper              // 配置文件解析器
+	appUpdateRunning atomic.Bool               // 防止并发检查更新
+	appConfigMutex   sync.Mutex                // 串行化配置变更（changeAppConfig / reloadFromDisk / 手动重启核心）
 )
 
 func initAppConfig() {
 	// 设置通知展示程序名称
 	beeep.AppName = AppName
 
-	// 初始化默认配置
-	appConfig.Store(defaultAppConfig())
-
 	appConfigPath = filepath.Join(workDir, "gohomo.yaml")
 	if !isFileExist(appConfigPath) {
-		// 不存在，创建默认初始化配置
-		if err := writeAppConfig(appConfigPath, getAppConfig()); err != nil {
+		// 不存在则写入一份默认配置作为模板，方便用户照着改
+		if err := writeAppConfig(appConfigPath, defaultAppConfig()); err != nil {
 			log.Println("Failed to create app config:", err)
 		}
 	}
 
 	appConfigViper = viper.NewWithOptions(viper.KeyDelimiter("::"))
 	appConfigViper.SetConfigFile(appConfigPath)
-	if err := appConfigViper.ReadInConfig(); err != nil {
-		log.Println("Failed to read app config:", err)
-	} else if err = loadAppConfig(true); err != nil {
-		log.Println("Failed to load app config:", err)
-	}
 
-	enabled := isAutoStartEnabled()
-	wanted := getAppConfig().AutoStart
-	if enabled != wanted {
-		if err := setAutoStart(wanted); err != nil {
+	cfg, err := parseAppConfig()
+	if err != nil {
+		log.Println("Failed to load app config, falling back to default:", err)
+		cfg = defaultAppConfig()
+	} else if needsConfigRewrite() {
+		// 解析配置成功后，再判断是否有配置文件 key 与程序不一致时才写回磁盘
+		if err = writeAppConfig(appConfigPath, cfg); err != nil {
+			log.Println("Failed to write app config:", err)
+		}
+	}
+	appConfig.Store(cfg)
+
+	// 同步开机自启动注册表项
+	if isAutoStartEnabled() != cfg.AutoStart {
+		if err = setAutoStart(cfg.AutoStart); err != nil {
 			log.Println("Failed to set auto start:", err)
 		}
 	}
-
-	watchAppConfig()
 }
 
 // 应用默认配置
@@ -137,26 +143,21 @@ func defaultAppConfig() *AppConfig {
 	}
 }
 
-func loadAppConfig(write bool) error {
-	tempConfig := defaultAppConfig()
-	// 读取本地配置进行覆盖
-	if err := appConfigViper.Unmarshal(tempConfig); err != nil {
-		return err
+// parseAppConfig 从磁盘读取并规范化应用配置；不更新内存、不写盘
+func parseAppConfig() (*AppConfig, error) {
+	if err := appConfigViper.ReadInConfig(); err != nil {
+		return nil, err
+	}
+	cfg := defaultAppConfig()
+	if err := appConfigViper.Unmarshal(cfg); err != nil {
+		return nil, err
 	}
 
-	normalizeAppConfig(tempConfig)
-	migrateAppConfig(tempConfig)
-
-	appConfig.Store(tempConfig)
-
-	if write {
-		if err := writeAppConfig(appConfigPath, tempConfig); err != nil {
-			log.Println("Failed to write app config:", err)
-		}
-	}
+	normalizeAppConfig(cfg)
+	migrateAppConfig(cfg)
 
 	log.Println("App config loaded:", appConfigPath)
-	return nil
+	return cfg, nil
 }
 
 func normalizeAppConfig(config *AppConfig) {
@@ -184,7 +185,7 @@ func migrateAppConfig(config *AppConfig) {
 }
 
 func getAppConfig() *AppConfig {
-	return appConfig.Load().(*AppConfig)
+	return appConfig.Load()
 }
 
 func writeAppConfig(path string, config *AppConfig) error {
@@ -195,97 +196,165 @@ func writeAppConfig(path string, config *AppConfig) error {
 	return os.WriteFile(path, out, 0644)
 }
 
+// changeAppConfig 唯一的"主动修改配置"入口（托盘点击等 UI 触发）
+// 流程：拷贝当前配置 → 应用 option → 写盘 → applyAppConfig（store + 应用生效 + 刷新菜单）
+// 写盘失败则不更新内存，避免内存/磁盘分裂；写盘成功后 fsnotify 反弹会被 reloadFromDisk 用 DeepEqual 跳过
 func changeAppConfig(options ...AppConfigOption) {
 	if len(options) == 0 {
 		return
 	}
 
-	// 获取当前配置并复制一份，避免直接修改全局正在使用的指针
-	currentConfig := getAppConfig()
-	newConfig := *currentConfig
+	appConfigMutex.Lock()
+	defer appConfigMutex.Unlock()
 
-	for _, option := range options {
-		option(&newConfig)
+	cfg := *getAppConfig()
+	for _, opt := range options {
+		opt(&cfg)
 	}
 
-	// 配置持久化
-	if err := writeAppConfig(appConfigPath, &newConfig); err != nil {
+	if err := writeAppConfig(appConfigPath, &cfg); err != nil {
 		log.Println("Failed to write app config:", err)
+		return
+	}
+	applyAppConfig(&cfg)
+}
+
+// applyAppConfig 把 newCfg store 到内存，按字段 diff 应用生效，最后刷新托盘菜单
+// changeAppConfig（主动修改）和 reloadFromDisk（用户编辑 yaml）共用同一入口
+func applyAppConfig(newCfg *AppConfig) {
+	old := appConfig.Swap(newCfg)
+	if old != nil {
+		diffApply(old, newCfg)
+	}
+	updateTrayMenu(newCfg)
+}
+
+// diffApply 按字段差异应用生效
+// 关键优化：close↔system 切换不重启核心，只调系统代理；
+// 仅在 CoreRunMode / CoreOverride 变化、或切换 TUN 模式时才必须重启核心
+func diffApply(old, new *AppConfig) {
+	if old.AutoStart != new.AutoStart {
+		if err := setAutoStart(new.AutoStart); err != nil {
+			go messageBoxAlert(AppName, fmt.Sprint(err))
+		}
+	}
+	if old.CoreLogEnabled != new.CoreLogEnabled {
+		coreLogWriter.Switch(new.CoreLogEnabled)
+	}
+
+	// CoreRunMode/CoreOverride 改了 → 必须重启核心；TUN 是核心的 feature，所以切换 TUN 也要重启
+	coreRestart := old.CoreRunMode != new.CoreRunMode ||
+		!reflect.DeepEqual(old.CoreOverride, new.CoreOverride) ||
+		(old.ProxyMode == ProxyModeTun) != (new.ProxyMode == ProxyModeTun)
+	if coreRestart {
+		applyCoreConfigChange(new)
+		return
+	}
+
+	// 只是 close/system 切换或 ProxyByPass 改了，不重启核心，只刷系统代理
+	proxyRefresh := old.ProxyMode != new.ProxyMode ||
+		!reflect.DeepEqual(old.ProxyByPass, new.ProxyByPass)
+	if proxyRefresh {
+		refreshSystemProxy(new)
+	}
+}
+
+// applyCoreConfigChange 重新加载核心配置 + 重启核心 + 按 ProxyMode 调系统代理
+// 既用于 diffApply 的"必须重启核心"分支，也给托盘 重启核心 手动触发复用
+func applyCoreConfigChange(cfg *AppConfig) {
+	if err := loadCoreConfig(); err != nil {
+		// 加载失败：旧核心仍在跑旧配置，代理保持原状不动
+		go messageBoxAlert(AppName, fmt.Sprint(err))
+		return
+	}
+	if !restartCore() {
+		unsetCoreProxy()
+		go messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
+		return
+	}
+	refreshSystemProxy(cfg)
+}
+
+// restartCoreManually 供托盘"重启核心"手动触发：持 appConfigMutex 与配置变更串行，避免与连点 / 外部编辑并发
+func restartCoreManually() {
+	appConfigMutex.Lock()
+	defer appConfigMutex.Unlock()
+	applyCoreConfigChange(getAppConfig())
+}
+
+// refreshSystemProxy 按 ProxyMode 设置/清理系统代理。close 和 tun 模式都不开系统代理
+func refreshSystemProxy(cfg *AppConfig) {
+	if cfg.ProxyMode == ProxyModeSystem {
+		setCoreProxy()
+	} else {
+		unsetCoreProxy()
 	}
 }
 
 func watchAppConfig() {
-	var last time.Time
+	var debounceTimer *time.Timer
 
+	// OnConfigChange 由 viper 内部单一 fsnotify goroutine 串行调用
 	appConfigViper.OnConfigChange(func(e fsnotify.Event) {
 		if e.Op != fsnotify.Write {
 			return
 		}
-
-		// 防抖
-		now := time.Now()
-		if now.Sub(last) < 500*time.Millisecond {
-			return
+		// 尾随防抖：每次事件都重置 timer，500ms 内无新事件才真正执行
+		// 避免 Windows 上 fsnotify 对一次写入触发两次事件时丢掉最终状态
+		if debounceTimer != nil {
+			debounceTimer.Stop()
 		}
-		last = now
-
-		oldConfig := getAppConfig()
-
-		if err := loadAppConfig(false); err != nil {
-			log.Println("Failed to reload app config:", err)
-			return
-		}
-
-		newConfig := getAppConfig()
-
-		// 设置开机自启动
-		if oldConfig.AutoStart != newConfig.AutoStart {
-			if err := setAutoStart(newConfig.AutoStart); err != nil {
-				go messageBoxAlert(AppName, fmt.Sprint(err))
-			}
-		}
-
-		// 重载核心日志配置
-		if oldConfig.CoreLogEnabled != newConfig.CoreLogEnabled {
-			coreLogWriter.Switch(newConfig.CoreLogEnabled)
-		}
-
-		// 重新加载核心配置
-		if oldConfig.ProxyMode != newConfig.ProxyMode ||
-			oldConfig.CoreRunMode != newConfig.CoreRunMode ||
-			!reflect.DeepEqual(oldConfig.ProxyByPass, newConfig.ProxyByPass) ||
-			!reflect.DeepEqual(oldConfig.CoreOverride, newConfig.CoreOverride) {
-			if err := loadCoreConfig(); err != nil {
-				go messageBoxAlert(AppName, fmt.Sprint(err))
-			} else {
-				// 重启核心
-				if !restartCore() {
-					go messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
-				}
-			}
-
-			if newConfig.ProxyMode == ProxyModeSystem {
-				// 设置系统代理
-				setCoreProxy()
-			} else {
-				// 关闭系统代理
-				unsetCoreProxy()
-			}
-		}
-
-		updateTrayMenu(newConfig)
+		debounceTimer = time.AfterFunc(500*time.Millisecond, reloadFromDisk)
 	})
 
 	appConfigViper.WatchConfig()
 }
 
+// reloadFromDisk fsnotify 防抖触发：重读 yaml 跟内存对比，不同就走 applyAppConfig
+// 程序自己写盘（changeAppConfig）也会触发 fsnotify，但 reload 后跟内存一致会被 DeepEqual 跳过
+// 所以本函数只服务"用户外部编辑 yaml"的场景
+func reloadFromDisk() {
+	appConfigMutex.Lock()
+	defer appConfigMutex.Unlock()
+
+	cfg, err := parseAppConfig()
+	if err != nil {
+		log.Println("Failed to reload app config:", err)
+		return
+	}
+	if reflect.DeepEqual(getAppConfig(), cfg) {
+		return // 程序自己写盘的反弹，跳过
+	}
+	applyAppConfig(cfg)
+}
+
 func checkAppUpdate() {
-	resp, err := http.Get(fmt.Sprintf("%s/releases/latest", AppGitHubRepoApi))
+	if !appUpdateRunning.CompareAndSwap(false, true) {
+		return // 已有更新检查在进行中
+	}
+	defer appUpdateRunning.Store(false)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/releases/latest", AppGitHubRepoApi), nil)
+	if err != nil {
+		go messageBoxAlert(AppName, fmt.Sprintf("Failed to check update: %v", err))
+		return
+	}
+	// GitHub API 拒绝无 UA 的请求
+	req.Header.Set("User-Agent", AppName)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		go messageBoxAlert(AppName, fmt.Sprintf("Failed to check update: %v", err))
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		go messageBoxAlert(AppName, fmt.Sprintf("Update check failed: HTTP %d", resp.StatusCode))
+		return
+	}
 
 	var release GitHubRelease
 	if err = json.NewDecoder(resp.Body).Decode(&release); err != nil {
@@ -294,15 +363,44 @@ func checkAppUpdate() {
 	}
 
 	latestVersion := release.TagName
-	if latestVersion != "" && latestVersion != version {
-		go func() {
-			if messageBoxConfirm(AppName, I.TranSys("msg.info.update_available", map[string]any{"Version": latestVersion})) {
-				downloadUrl := fmt.Sprintf("%s/releases/download/%s/gohomo-%s-%s-%s.zip", AppGitHubRepo, latestVersion, runtime.GOOS, runtime.GOARCH, latestVersion)
-				log.Println("Update package download url:", downloadUrl)
-				_ = openBrowser(downloadUrl)
-			}
-		}()
+	if latestVersion != "" && version != "" && latestVersion != version {
+		if messageBoxConfirm(AppName, I.TranSys("msg.info.update_available", map[string]any{"Version": latestVersion})) {
+			downloadUrl := fmt.Sprintf("%s/releases/download/%s/gohomo-%s-%s-%s.zip", AppGitHubRepo, latestVersion, runtime.GOOS, runtime.GOARCH, latestVersion)
+			log.Println("Update package download url:", downloadUrl)
+			_ = shellOpen(downloadUrl)
+		}
 	} else {
 		go messageBoxAlert(AppName, I.TranSys("msg.info.no_update", nil))
 	}
+}
+
+// needsConfigRewrite 检查配置文件的 key 是否与 AppConfig 结构体一致
+// 返回 true 表示存在不一致，需要回写配置文件
+func needsConfigRewrite() bool {
+	// 用 viper 已解析的结果，避免重复读文件
+	fileKeys := appConfigViper.AllSettings()
+
+	// 获取结构体 mapstructure tag 作为合法 key 集合
+	structFields := make(map[string]struct{})
+	t := reflect.TypeOf(AppConfig{})
+	for i := range t.NumField() {
+		if tag, ok := t.Field(i).Tag.Lookup("mapstructure"); ok && tag != "" {
+			structFields[tag] = struct{}{}
+		}
+	}
+
+	// 检查结构体字段是否全部存在于文件中
+	for k := range structFields {
+		if _, ok := fileKeys[k]; !ok {
+			return true
+		}
+	}
+	// 文件有结构体不认识的 key（拼写错误/废弃字段）
+	for k := range fileKeys {
+		if _, ok := structFields[k]; !ok {
+			return true
+		}
+	}
+
+	return false
 }

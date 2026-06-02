@@ -6,9 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -31,58 +29,11 @@ var (
 	procGenerateConsoleCtrlEvent = modKernel32.NewProc("GenerateConsoleCtrlEvent")
 )
 
-// 查找指定名称的所有进程
-func findProcessesByName(processName string) ([]*process.Process, error) {
-	if processName == "" {
-		return nil, fmt.Errorf("process name is empty")
-	}
-
-	processes, err := process.Processes()
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*process.Process
-	for _, p := range processes {
-		name, err := p.Name()
-		if err != nil {
-			continue
-		}
-
-		if strings.EqualFold(name, processName) {
-			result = append(result, p)
-		}
-	}
-	return result, nil
-}
-
-// 检查进程是否运行
-func isProcessRunning(processName string) bool {
-	processes, _ := process.Processes()
-	for _, p := range processes {
-		name, err := p.Name()
-		if err == nil && strings.EqualFold(name, processName) {
-			return true
-		}
-	}
-	return false
-}
-
-// 检查进程是否运行（根据进程id）
-func isProcessRunningByPid(pid int32) bool {
-	if pid <= 0 {
-		return false
-	}
-
-	exists, err := process.PidExists(pid)
-	if err != nil {
-		return false
-	}
-	return exists
-}
-
 // 根据进程名称查找进程id
 func findProcessId(processName string) int32 {
+	if processName == "" {
+		return 0
+	}
 	processes, _ := process.Processes()
 	for _, p := range processes {
 		name, err := p.Name()
@@ -93,58 +44,30 @@ func findProcessId(processName string) int32 {
 	return 0
 }
 
-// 根据进程名称查找进程
-func findProcess(processName string) (*process.Process, error) {
-	processes, _ := process.Processes()
-	for _, p := range processes {
-		name, err := p.Name()
-		if err == nil && strings.EqualFold(name, processName) {
-			return p, nil
-		}
-	}
-	return nil, fmt.Errorf("process %s not found", processName)
-}
-
-// 根据进程名称强制结束进程
-func killProcess(processName string) error {
-	processes, err := findProcessesByName(processName)
-	if err != nil {
-		return err
-	}
-
-	if len(processes) == 0 {
-		// 进程本就不存在，视作成功
+// 根据进程id查找进程对象
+func findProcessByPid(pid int32) *process.Process {
+	if pid <= 0 {
 		return nil
 	}
-
-	var lastErr error
-	for _, p := range processes {
-		if err = p.Kill(); err != nil {
-			lastErr = err
-			log.Printf("force kill process %d failed: %v\n", p.Pid, err)
-		}
-	}
-	return lastErr
-}
-
-// 根据进程id强制结束进程
-func killProcessByPid(pid int32) error {
-	if pid <= 0 {
-		return fmt.Errorf("pid is invalid")
-	}
-
 	p, err := process.NewProcess(pid)
 	if err != nil {
-		return err
+		return nil
 	}
-	return p.Kill()
+	return p
 }
 
-// 尝试优雅的结束进程，如未成功则强制结束
-func killProcessGracefully(processName string) error {
-	pid := findProcessId(processName)
-	if pid == 0 {
-		// 进程不存在，视作成功
+// 检查指定 pid 的进程是否还存活
+func isPidAlive(pid int32) bool {
+	if pid <= 0 {
+		return false
+	}
+	exists, _ := process.PidExists(pid)
+	return exists
+}
+
+// 尝试优雅的结束指定 pid 的进程，如未成功则强制结束
+func killProcessGracefully(pid int32) error {
+	if pid <= 0 {
 		return nil
 	}
 
@@ -155,29 +78,29 @@ func killProcessGracefully(processName string) error {
 
 	if err = sendCtrlBreakEvent(pid); err != nil {
 		log.Printf("send CTRL_BREAK to %d failed, force kill: %v\n", pid, err)
-		return p.Kill() // 强制结束
+		// 强制结束进程
+		if err = p.Kill(); err != nil {
+			return err
+		}
 	}
 
-	// 等待进程退出，超时后强制结束
-	timeout := time.After(5 * time.Second)
-	done := make(chan error, 1)
-	go func() {
-		_, waitErr := p.Wait()
-		done <- waitErr
-	}()
-
-	select {
-	case <-timeout:
+	// 等退出，超时则强制结束
+	if err = waitForProcessExit(pid, 5*time.Second); err != nil {
 		log.Printf("graceful shutdown pid %d timeout, force kill\n", pid)
-		return p.Kill() // 超时未退出，强制结束
-	case waitErr := <-done:
-		return waitErr
+		if err = p.Kill(); err != nil {
+			return err
+		}
+		return waitForProcessExit(pid, 3*time.Second)
 	}
+	return nil
 }
 
 // 参考：https://github.com/GUI-for-Cores/GUI.for.Clash/blob/main/bridge/exec_windows.go
 func sendCtrlBreakEvent(pid int32) error {
-	// 先脱离当前 console
+	if pid <= 0 {
+		return errors.New("pid can not be zero")
+	}
+	// 先脱离当前 console；GUI 进程本身没有 console，ERROR_INVALID_HANDLE 是正常的
 	ret, _, err := procFreeConsole.Call()
 	if ret == 0 && !errors.Is(err, windows.ERROR_INVALID_HANDLE) {
 		return err
@@ -186,10 +109,17 @@ func sendCtrlBreakEvent(pid int32) error {
 	// 恢复父控制台
 	defer procAttachConsole.Call(uintptr(^uint32(0)))
 
-	// 尝试附加到控制台
+	// 尝试附加到目标进程的控制台
 	ret, _, err = procAttachConsole.Call(uintptr(pid))
-	if ret == 0 && !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
-		return err
+	if ret == 0 {
+		// ERROR_INVALID_HANDLE：目标进程没有控制台，无法发送 Ctrl 事件，需要走 force kill
+		// ERROR_ACCESS_DENIED：已有控制台，可能是权限问题，仍然尝试发送
+		if errors.Is(err, windows.ERROR_INVALID_HANDLE) {
+			return fmt.Errorf("target process %d has no console: %w", pid, windows.ERROR_INVALID_HANDLE)
+		}
+		if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+			return err
+		}
 	}
 
 	// 尝试设置控制台处理程序，让当前进程忽略 Ctrl 事件（防止误伤自己）
@@ -209,55 +139,38 @@ func sendCtrlBreakEvent(pid int32) error {
 	return nil
 }
 
+func waitForProcessExit(pid int32, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		if exists, _ := process.PidExists(pid); !exists {
+			// 防止“刚退出又被自启动拉起”
+			time.Sleep(100 * time.Millisecond)
+			if exists2, _ := process.PidExists(pid); !exists2 {
+				return nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("process %d still alive after %v", pid, timeout)
+}
+
 // 判断文件是否存在
 func isFileExist(path string) bool {
 	if path == "" {
 		return false
 	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	// 仅当能成功 stat 时才视为存在；权限等错误不再误判为存在而走错分支
+	_, err := os.Stat(path)
+	return err == nil
 }
 
-// 使用默认程序打开指定地址/文件/文件夹/程序等
-func openBrowser(uri string) error {
-	var cmd *exec.Cmd
-
-	switch runtime.GOOS {
-	case "windows":
-		// 处理 uri 特殊字符
-		uri = strings.ReplaceAll(uri, "&", "^&")
-		cmd = exec.Command("cmd", "/c", "start", "", uri)
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	case "darwin":
-		cmd = exec.Command("open", uri)
-	case "linux":
-		cmd = exec.Command("xdg-open", uri)
-	default:
-		return fmt.Errorf("unsupported platform")
-	}
-
-	return cmd.Start()
-}
-
-// 打开目录浏览
-func openDirectory(dir string) error {
-	var cmd *exec.Cmd
-
-	// 判断当前系统类型
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("explorer", dir) // Windows
-	case "darwin":
-		cmd = exec.Command("open", dir) // macOS
-	case "linux":
-		cmd = exec.Command("xdg-open", dir) // Linux (需要安装 xdg-utils)
-	default:
-		return fmt.Errorf("unsupported platform")
-	}
-
-	return cmd.Start()
+// 用系统默认关联程序打开 URL / 文件 / 目录
+func shellOpen(target string) error {
+	verb, _ := windows.UTF16PtrFromString("open")
+	file, _ := windows.UTF16PtrFromString(target)
+	return windows.ShellExecute(0, verb, file, nil, nil, windows.SW_SHOWNORMAL)
 }
 
 // 返回值对应不同的按钮，flags表示展示MB_xx哪些操作按钮
@@ -284,10 +197,10 @@ func messageBoxConfirm(title, content string) bool {
 func execCommand(name string, arg ...string) *exec.Cmd {
 	cmd := exec.Command(name, arg...)
 	cmd.SysProcAttr = &windows.SysProcAttr{
-		// 设置控制台字符集和新进程组
-		CreationFlags: windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_NEW_PROCESS_GROUP,
-		// 隐藏窗口
-		HideWindow: true,
+		// CREATE_NO_WINDOW: 控制台子进程不分配可见的 conhost 窗口
+		// CREATE_NEW_PROCESS_GROUP: 让子进程接收 Ctrl+Break 信号以优雅退出
+		CreationFlags: windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_NO_WINDOW,
+		HideWindow:    true,
 	}
 	return cmd
 }
@@ -295,9 +208,8 @@ func execCommand(name string, arg ...string) *exec.Cmd {
 // 发送通知
 func sendNotification(message string) {
 	var icon any
-	iconBytes, _ := appStaticFiles.ReadFile("static/icon.png")
-	if iconBytes != nil {
-		icon = iconBytes
+	if notificationIcon != nil {
+		icon = notificationIcon
 	} else {
 		icon = ""
 	}
@@ -338,14 +250,21 @@ func deepMerge(target map[string]any, other map[string]any) map[string]any {
 			case strings.HasPrefix(key, "+"):
 				k := trimWrap(key[1:])
 				if existing, ok := target[k].([]any); ok {
-					target[k] = append(v, existing...)
+					// 新建切片承载结果，避免 append 就地写入 v 的底层数组（v 来自不可变的 CoreOverride 快照）
+					target[k] = append(append([]any{}, v...), existing...)
+				} else {
+					// 目标无此数组时，前插退化为整体设置，否则覆写内容会被静默丢弃
+					target[k] = v
 				}
 
 			// xxx+ 后插
 			case strings.HasSuffix(key, "+"):
 				k := trimWrap(key[:len(key)-1])
 				if existing, ok := target[k].([]any); ok {
-					target[k] = append(existing, v...)
+					target[k] = append(append([]any{}, existing...), v...)
+				} else {
+					// 目标无此数组时，后插退化为整体设置
+					target[k] = v
 				}
 
 			// xxx 覆盖

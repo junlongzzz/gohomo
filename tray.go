@@ -47,22 +47,23 @@ var trayMenu TrayMenu
 
 // 初始化系统托盘
 func initSystray() {
+	// 监听应用配置变化，放在此处是避免在初始化核心时就触发配置变化
+	watchAppConfig()
 	systray.Run(onReady, onExit)
 }
 
 func onReady() {
 	sendNotification(I.TranSys("tray.start_message", nil))
 
-	iconBytes, _ := appStaticFiles.ReadFile("static/icon.ico")
-	if iconBytes != nil {
-		systray.SetIcon(iconBytes)
+	if trayIcon != nil {
+		systray.SetIcon(trayIcon)
 	}
 	systray.SetTitle(AppName)
 	systray.SetTooltip(AppName)
 
 	systray.AddMenuItem(fmt.Sprintf("%s %s", AppName, version), AppName).Click(func() {
 		// 点击打开主页
-		_ = openBrowser(AppGitHubRepo)
+		_ = shellOpen(AppGitHubRepo)
 	})
 
 	// 分割线
@@ -71,7 +72,7 @@ func onReady() {
 	trayMenu.Core = systray.AddMenuItem(CoreShowName, CoreShowName)
 	trayMenu.Core.Click(func() {
 		// 点击打开主页
-		_ = openBrowser(CoreGitHubRepo)
+		_ = shellOpen(CoreGitHubRepo)
 	})
 
 	trayMenu.ProxyMode.Menu = systray.AddMenuItem(I.TranSys("tray.proxy_mode.title", nil), "")
@@ -85,6 +86,11 @@ func onReady() {
 		go changeAppConfig(WithProxyMode(ProxyModeSystem))
 	})
 	trayMenu.ProxyMode.Tun.Click(func() {
+		// 切 TUN 前先拦截没有管理员权限的情况
+		if !isRunAsAdmin() {
+			go messageBoxAlert(AppName, I.TranSys("msg.error.core.config.tun_without_admin", nil))
+			return
+		}
 		go changeAppConfig(WithProxyMode(ProxyModeTun))
 	})
 
@@ -104,44 +110,33 @@ func onReady() {
 
 	trayMenu.RestartCore = systray.AddMenuItem(I.TranSys("tray.restart_core", nil), "")
 	trayMenu.RestartCore.Click(func() {
+		// 主线程同步 Disable，避免连点窗口
+		trayMenu.RestartCore.Disable()
 		go func() {
-			trayMenu.RestartCore.Disable()
 			defer trayMenu.RestartCore.Enable()
-			// 重新加载核心配置
-			if err := loadCoreConfig(); err != nil {
-				go messageBoxAlert(AppName, fmt.Sprint(err))
-				return
-			}
-			if restartCore() {
-				if getAppConfig().ProxyMode == ProxyModeSystem {
-					// 重新设置代理
-					setCoreProxy()
-				}
-			} else {
-				unsetCoreProxy()
-				go messageBoxAlert(AppName, I.TranSys("msg.error.core.restart_failed", nil))
-			}
+			// 复用配置变更路径里"重启核心 + 调代理"的同一份逻辑，并与连点 / 外部编辑串行
+			restartCoreManually()
 		}()
 	})
 
 	systray.AddMenuItem(I.TranSys("tray.edit_config", nil), "").Click(func() {
 		// 打开配置文件
-		_ = openBrowser(coreConfigPath)
+		_ = shellOpen(coreConfigPath)
 	})
 
 	trayMenu.Dashboard.Menu = systray.AddMenuItem(I.TranSys("tray.core_dashboard.title", nil), "")
 	trayMenu.Dashboard.Local = trayMenu.Dashboard.Menu.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.local_ui", nil), "")
 	trayMenu.Dashboard.Local.Click(func() {
-		_ = openBrowser(getCoreConfig().ExternalUiAddr)
+		_ = shellOpen(getCoreConfig().ExternalUiAddr)
 	})
 	trayMenu.Dashboard.Menu.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.official_ui", nil), "").Click(func() {
-		_ = openBrowser(getCoreConfig().OfficialUiAddr)
+		_ = shellOpen(getCoreConfig().OfficialUiAddr)
 	})
 	trayMenu.Dashboard.Menu.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.yacd_ui", nil), "").Click(func() {
-		_ = openBrowser(getCoreConfig().YACDUiAddr)
+		_ = shellOpen(getCoreConfig().YACDUiAddr)
 	})
 	trayMenu.Dashboard.Menu.AddSubMenuItem(I.TranSys("tray.core_dashboard.options.zash_ui", nil), "").Click(func() {
-		_ = openBrowser(getCoreConfig().ZashBoardUiAddr)
+		_ = shellOpen(getCoreConfig().ZashBoardUiAddr)
 	})
 
 	// 分割线
@@ -149,27 +144,19 @@ func onReady() {
 
 	systray.AddMenuItem(I.TranSys("tray.app_config", nil), "").Click(func() {
 		// 打开配置文件
-		_ = openBrowser(appConfigPath)
+		_ = shellOpen(appConfigPath)
 	})
 
 	openMenu := systray.AddMenuItem(I.TranSys("tray.open.title", nil), "")
 	// 打开本地工作目录
 	openMenu.AddSubMenuItem(I.TranSys("tray.open.options.work_dir", nil), "").Click(func() {
-		_ = openDirectory(workDir)
+		_ = shellOpen(workDir)
 	})
 
 	var openShellFn = func(shell string) {
 		cmd := exec.Command(shell)
 		cmd.Dir = workDir
 		cmd.Env = os.Environ()
-		if proxyServer := getProxyServer(); proxyServer != "" {
-			// 设置代理环境变量
-			cmd.Env = append(cmd.Env,
-				fmt.Sprintf("HTTP_PROXY=http://%s", proxyServer),
-				fmt.Sprintf("HTTPS_PROXY=http://%s", proxyServer),
-				fmt.Sprintf("http_proxy=http://%s", proxyServer),
-				fmt.Sprintf("https_proxy=http://%s", proxyServer))
-		}
 		cmd.SysProcAttr = &windows.SysProcAttr{
 			CreationFlags: windows.CREATE_NEW_CONSOLE | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_NEW_PROCESS_GROUP,
 		}
@@ -209,8 +196,8 @@ func onReady() {
 
 	trayMenu.More.CheckUpdate = moreMenu.AddSubMenuItem(I.TranSys("tray.more.options.check_update", nil), "")
 	trayMenu.More.CheckUpdate.Click(func() {
+		trayMenu.More.CheckUpdate.Disable()
 		go func() {
-			trayMenu.More.CheckUpdate.Disable()
 			defer trayMenu.More.CheckUpdate.Enable()
 			checkAppUpdate()
 		}()
@@ -289,7 +276,7 @@ func onExit() {
 	// 退出程序后的处理操作
 	unsetCoreProxy()
 	stopCore()
-	os.Exit(0)
+	// 不调用 os.Exit：让 systray.Run 自然返回，main 函数 return 后 defer 才能执行（关日志文件、释放单实例锁）
 }
 
 func updateTrayMenu(appConfig *AppConfig) {

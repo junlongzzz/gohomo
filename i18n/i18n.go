@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"go.yaml.in/yaml/v3"
@@ -20,10 +19,9 @@ import (
 
 type I18n struct {
 	bundle      *i18n.Bundle
-	localizers  map[string]*i18n.Localizer
-	mutex       sync.RWMutex
-	defaultLang string // 默认语言
-	systemLang  string // 系统语言
+	localizers  sync.Map     // map[string]*i18n.Localizer，Localizer 内部是 goroutine-safe
+	defaultLang string       // Init 后只读
+	systemLang  atomic.Value // 存 string，允许运行时被 SetSystemLang 覆盖
 }
 
 //go:embed locales/*
@@ -31,20 +29,15 @@ var localeFS embed.FS
 
 // New 创建一个i18n实例
 func New() *I18n {
-	return &I18n{
-		localizers: make(map[string]*i18n.Localizer),
-	}
+	return &I18n{}
 }
 
 // Init 初始化i18n实例
 func (i *I18n) Init() error {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-
 	// 默认语言
 	i.defaultLang = "en"
 	// 检测系统语言
-	i.systemLang = i.detectSystemLang(i.defaultLang)
+	i.systemLang.Store(i.detectSystemLang(i.defaultLang))
 
 	i.bundle = i18n.NewBundle(language.Make(i.defaultLang))
 	i.bundle.RegisterUnmarshalFunc("yml", yaml.Unmarshal)
@@ -79,9 +72,6 @@ func (i *I18n) Init() error {
 
 // Tran 翻译至对应的语言
 func (i *I18n) Tran(messageID, lang string, data map[string]any) string {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-
 	if i.bundle == nil {
 		return fmt.Sprintf("[i18n not initialized] %s", messageID)
 	}
@@ -101,37 +91,35 @@ func (i *I18n) Tran(messageID, lang string, data map[string]any) string {
 
 // TranSys 使用系统语言进行翻译
 func (i *I18n) TranSys(messageID string, data map[string]any) string {
-	return i.Tran(messageID, i.systemLang, data)
+	lang, _ := i.systemLang.Load().(string)
+	return i.Tran(messageID, lang, data)
 }
 
 // SetSystemLang 手动覆盖检测到的系统语言（可选）
 func (i *I18n) SetSystemLang(lang string) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.systemLang = lang
+	i.systemLang.Store(lang)
 }
 
 // getLocalizer 获取指定语言的Localizer
 func (i *I18n) getLocalizer(lang string) *i18n.Localizer {
-	// canonicalize: replace _ with - and lower-case primary
-	lang = strings.ReplaceAll(lang, "_", "-")
-	lang = strings.TrimSpace(lang)
+	// canonicalize: replace _ with -, trim, lower-case，保证缓存 key 归一化
+	lang = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(lang, "_", "-")))
 	if lang == "" {
 		lang = i.defaultLang
 	}
 
-	// quick read
-	if loc, ok := i.localizers[lang]; ok {
-		return loc
+	if cached, ok := i.localizers.Load(lang); ok {
+		return cached.(*i18n.Localizer)
 	}
 
-	// create
-	loc := i18n.NewLocalizer(i.bundle, lang)
-	i.localizers[lang] = loc
-	return loc
+	// 未命中再创建；LoadOrStore 保证多 goroutine 并发只有一个 Localizer 生效
+	// 传入 defaultLang 作为兜底，避免目标语言文件缺失时返回错误占位符
+	loc := i18n.NewLocalizer(i.bundle, lang, i.defaultLang)
+	actual, _ := i.localizers.LoadOrStore(lang, loc)
+	return actual.(*i18n.Localizer)
 }
 
-// detectSystemLang 支持 Linux/macOS（LANG 环境变量）与 Windows (PowerShell Get-Culture)
+// detectSystemLang 优先读 LANG/LC_* 环境变量，否则调用 Win32 API 获取用户首选 UI 语言
 func (i *I18n) detectSystemLang(defaultLang string) string {
 	// 1. check common env vars
 	envVars := []string{"LANG", "LC_ALL", "LC_MESSAGES"}
@@ -142,18 +130,10 @@ func (i *I18n) detectSystemLang(defaultLang string) string {
 			}
 		}
 	}
-	// 2. windows fallback
-	if runtime.GOOS == "windows" {
-		// try powershell Get-Culture
-		cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", "(Get-Culture).Name")
-		cmd.SysProcAttr = &windows.SysProcAttr{
-			// 隐藏窗口
-			HideWindow: true,
-		}
-		if out, err := cmd.Output(); err == nil {
-			if parsed := i.parseLangFromEnv(string(out)); parsed != "" {
-				return parsed
-			}
+	// 2. windows API
+	if langs, err := windows.GetUserPreferredUILanguages(windows.MUI_LANGUAGE_NAME); err == nil && len(langs) > 0 {
+		if parsed := i.parseLangFromEnv(langs[0]); parsed != "" {
+			return parsed
 		}
 	}
 	return defaultLang
